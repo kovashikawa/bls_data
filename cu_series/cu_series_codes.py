@@ -17,7 +17,9 @@ def get_cu_series_codes(filters: Optional[dict[str, str]] = None) -> list[str]:
     list[str]
         List of CPI series IDs matching the filters.
     """
-    file_path = Path("cpi_series_master_list.csv")
+    
+    # Build the path to the CSV file relative to the location of this script.
+    file_path = Path(__file__).parent / "cpi_series_master_list.csv"
     cu_series_df = pd.read_csv(file_path, dtype=str)  # ensure codes stay as strings
     
     if filters:
