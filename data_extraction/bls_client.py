@@ -1,4 +1,4 @@
-# bls_client.py
+# data_extraction/bls_client.py
 """
 This module provides a client for interacting with the Bureau of Labor Statistics (BLS) API.
 It includes functionality for making requests, handling retries, and managing API keys.
@@ -29,6 +29,7 @@ log.setLevel(logging.INFO)
 class BLSClient:
     """
     A client for the BLS API, responsible for making requests and handling responses.
+    Now includes optional database integration for caching and persistence.
     """
 
     api_key: Optional[str] = field(default_factory=get_random_bls_key)
@@ -37,6 +38,10 @@ class BLSClient:
 
     series_limit: int = 50  # per request (v2)
     years_limit: int = 20  # per request (v2)
+    
+    # Database integration (optional)
+    use_database: bool = False
+    repository: Optional[Any] = None  # Will be BLSDataRepository when database is enabled
 
     def __post_init__(self) -> None:
         """
@@ -45,6 +50,10 @@ class BLSClient:
         if self.api_key is None:
             self.api_key = get_random_bls_key()
         self._configure_retries()
+        
+        # Initialize database if enabled
+        if self.use_database and self.repository is None:
+            self._init_database()
 
     def _configure_retries(self) -> None:
         """
@@ -62,6 +71,44 @@ class BLSClient:
             self.session.mount("http://", adapter)
         except Exception:
             log.warning("Could not configure retries for requests.")
+
+    def _init_database(self) -> None:
+        """
+        Initialize database connection and repository.
+        """
+        try:
+            from database.config import DatabaseConfig
+            from database.repository import BLSDataRepository
+            
+            db_config = DatabaseConfig()
+            if not db_config.check_connection():
+                log.warning("Database connection failed. Disabling database features.")
+                self.use_database = False
+                return
+            
+            # Store the database config for creating sessions
+            self._db_config = db_config
+            log.info("Database integration enabled successfully.")
+                
+        except ImportError as e:
+            log.warning(f"Database dependencies not available: {e}. Disabling database features.")
+            self.use_database = False
+        except Exception as e:
+            log.warning(f"Database initialization failed: {e}. Disabling database features.")
+            self.use_database = False
+    
+    def _get_repository(self):
+        """Get a repository instance with a fresh session."""
+        if not self.use_database or not hasattr(self, '_db_config'):
+            return None
+        
+        try:
+            from database.repository import BLSDataRepository
+            session = self._db_config.SessionLocal()
+            return BLSDataRepository(session)
+        except Exception as e:
+            log.warning(f"Failed to create repository: {e}")
+            return None
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -142,4 +189,175 @@ class BLSClient:
                 chunk_series = data.get("Results", {}).get("series", [])
                 merged["Results"]["series"].extend(chunk_series)
         return merged
+
+    def fetch_with_database(
+        self,
+        series_ids: Iterable[str],
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+        *,
+        catalog: bool = False,
+        calculations: bool = False,
+        annualaverage: bool = False,
+        aspects: bool = False,
+        use_cache: bool = True,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Enhanced fetch method that uses database for caching when available.
+        Falls back to regular fetch if database is not available.
+        """
+        if not self.use_database:
+            log.info("Database not available, using standard fetch.")
+            return self.fetch(
+                series_ids, start_year, end_year,
+                catalog=catalog, calculations=calculations,
+                annualaverage=annualaverage, aspects=aspects
+            )
+        
+        sids = list(series_ids)
+        if not sids:
+            raise ValueError("No series IDs provided.")
+        
+        # Check what data we have in the database
+        if use_cache and not force_refresh:
+            try:
+                repository = self._get_repository()
+                if repository:
+                    # Get cached data from database
+                    cached_data = repository.get_series_data(
+                        sids, start_year, end_year, include_metadata=catalog
+                    )
+                    
+                    if not cached_data.empty:
+                        # Check if we need to fetch any missing data
+                        missing_series = repository.get_stale_series(max_age_hours=24)
+                        series_to_fetch = [sid for sid in sids if sid in missing_series]
+                        
+                        if not series_to_fetch:
+                            log.info(f"All data for {len(sids)} series found in cache.")
+                            return self._dataframe_to_api_format(cached_data)
+                        else:
+                            log.info(f"Fetching {len(series_to_fetch)} stale series from API.")
+                            # Fetch only the missing/stale data
+                            api_data = self.fetch(
+                                series_to_fetch, start_year, end_year,
+                                catalog=catalog, calculations=calculations,
+                                annualaverage=annualaverage, aspects=aspects
+                            )
+                            # Store new data in database
+                            self._store_api_data(api_data)
+                            # Return combined data
+                            return self._combine_cached_and_api_data(cached_data, api_data, sids)
+            except Exception as e:
+                log.warning(f"Database operation failed: {e}. Falling back to API.")
+        
+        # Fetch from API and store in database
+        api_data = self.fetch(
+            sids, start_year, end_year,
+            catalog=catalog, calculations=calculations,
+            annualaverage=annualaverage, aspects=aspects
+        )
+        
+        if self.use_database:
+            self._store_api_data(api_data)
+        
+        return api_data
+
+    def _dataframe_to_api_format(self, df) -> Dict[str, Any]:
+        """Convert pandas DataFrame back to API format for compatibility."""
+        if df.empty:
+            return {"status": "REQUEST_SUCCEEDED", "Results": {"series": []}, "message": None}
+        
+        # Group by series_id and convert to API format
+        series_data = {}
+        for _, row in df.iterrows():
+            series_id = row['series_id']
+            if series_id not in series_data:
+                series_data[series_id] = {
+                    "seriesID": series_id,
+                    "data": [],
+                    "catalog": {
+                        "seriesTitle": row.get('series_title'),
+                        "surveyName": row.get('survey_name'),
+                        "measureDataType": row.get('measure_data_type'),
+                        "area": row.get('area'),
+                        "item": row.get('item'),
+                        "seasonality": row.get('seasonality')
+                    }
+                }
+            
+            # Add data point
+            data_point = {
+                "year": str(row['year']),
+                "period": row['period'],
+                "periodName": row.get('period_name'),
+                "value": str(row['value']) if row['value'] is not None else "",
+                "footnotes": [{"text": row.get('footnotes')}] if row.get('footnotes') else []
+            }
+            series_data[series_id]["data"].append(data_point)
+        
+        return {
+            "status": "REQUEST_SUCCEEDED",
+            "Results": {"series": list(series_data.values())},
+            "message": None
+        }
+    
+    def _store_api_data(self, api_data: Dict[str, Any]) -> None:
+        """Store API data in database."""
+        if self.use_database:
+            try:
+                repository = self._get_repository()
+                if repository:
+                    # Convert API data to format expected by repository
+                    series_data = []
+                    for series in api_data.get("Results", {}).get("series", []):
+                        series_item = {
+                            "series_id": series.get("seriesID"),
+                            "series_title": series.get("catalog", {}).get("seriesTitle"),
+                            "survey_name": series.get("catalog", {}).get("surveyName"),
+                            "measure_data_type": series.get("catalog", {}).get("measureDataType"),
+                            "area": series.get("catalog", {}).get("area"),
+                            "item": series.get("catalog", {}).get("item"),
+                            "seasonality": series.get("catalog", {}).get("seasonality"),
+                            "latest": series.get("latest", False),
+                            "data": series.get("data", [])
+                        }
+                        series_data.append(series_item)
+                    
+                    # Store in database
+                    try:
+                        repository.upsert_series_data(series_data)
+                        repository.session.commit()
+                        log.info(f"Stored {len(series_data)} series in database")
+                    finally:
+                        repository.session.close()
+                
+            except Exception as e:
+                log.warning(f"Failed to store data in database: {e}")
+    
+    def _combine_cached_and_api_data(self, cached_df, api_data: Dict[str, Any], all_series_ids: List[str]) -> Dict[str, Any]:
+        """Combine cached and newly fetched API data."""
+        # Convert cached DataFrame to API format
+        cached_api_format = self._dataframe_to_api_format(cached_df)
+        
+        # Merge with new API data
+        combined_series = {}
+        
+        # Add cached series
+        for series in cached_api_format.get("Results", {}).get("series", []):
+            series_id = series.get("seriesID")
+            if series_id in all_series_ids:
+                combined_series[series_id] = series
+        
+        # Add/update with new API data
+        for series in api_data.get("Results", {}).get("series", []):
+            series_id = series.get("seriesID")
+            combined_series[series_id] = series
+        
+        return {
+            "status": "REQUEST_SUCCEEDED",
+            "Results": {"series": list(combined_series.values())},
+            "message": None
+        }
     

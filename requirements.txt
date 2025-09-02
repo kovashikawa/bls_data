@@ -5,14 +5,12 @@
 # pip install -r requirements.txt
 # -----------------------------------------------------------------
 
-# Core library for making HTTP requests to the BLS API.
 requests==2.31.0
-
-# Powerful data analysis and manipulation library, used for creating
-# and managing the final data table (DataFrame).
 pandas==2.2.2
-
-# Utility for loading environment variables from a .env file,
-# used here to securely manage BLS API keys.
 python-dotenv==1.0.1
 
+# Database requirements
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.0
+asyncpg>=0.29.0
