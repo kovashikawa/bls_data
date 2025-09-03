@@ -4,18 +4,18 @@ This is the main script for the BLS data fetching application. It handles comman
 orchestrates the data fetching process, and outputs the results to a CSV file or the console.
 """
 import argparse
-import logging
 import sys
 from pathlib import Path
 from typing import List, Optional, Union
 
 import pandas as pd
 
-from bls_client import BLSClient
-from data_parser import parse_results_to_df
-from mapping_loader import load_mapping, resolve_series_ids
+from .bls_client import BLSClient
+from .data_parser import parse_results_to_df
+from .mapping_loader import load_mapping, resolve_series_ids
+from bls_logging.config import get_logger
 
-log = logging.getLogger("bls")
+log = get_logger(__name__)
 
 
 def get_bls_data(
@@ -113,7 +113,9 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     p.add_argument("--force-refresh", action="store_true", help="Force refresh from API even if cached data exists")
     
     args = p.parse_args(argv)
-    log.setLevel(getattr(logging, args.log.upper(), logging.INFO))
+    if hasattr(args, 'log') and args.log:
+        import logging
+        log.setLevel(getattr(logging, args.log.upper(), logging.INFO))
     return args
 
 

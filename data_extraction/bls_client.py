@@ -5,7 +5,6 @@ It includes functionality for making requests, handling retries, and managing AP
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -13,16 +12,12 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-from api_key import get_random_bls_key
+from .api_key import get_random_bls_key
+from bls_logging.config import get_logger
 
 BLS_V2_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
-log = logging.getLogger("bls")
-if not log.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-    log.addHandler(handler)
-log.setLevel(logging.INFO)
+log = get_logger(__name__)
 
 
 @dataclass
