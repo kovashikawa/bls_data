@@ -4,13 +4,67 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, text, desc
 from typing import List, Dict, Optional, Tuple, Any
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import logging
 import uuid
+import re
 
 from .models import BLSSeries, BLSDataPoint, BLSAlias, BLSExtractionLog, BLSDataQuality, BLSDataFreshness
 
 log = logging.getLogger("bls")
+
+
+def period_to_date(year: int, period: str) -> date:
+    """
+    Convert BLS period format to date.
+    
+    BLS periods can be:
+    - M01, M02, ..., M12 (monthly)
+    - Q01, Q02, Q03, Q04 (quarterly)
+    - A01 (annual)
+    - S01, S02 (semiannual)
+    
+    Args:
+        year: Year (e.g., 2023)
+        period: Period string (e.g., "M01", "Q02", "A01")
+        
+    Returns:
+        date object
+    """
+    if period.startswith('M'):
+        # Monthly data: M01 = January, M02 = February, etc.
+        month = int(period[1:])
+        return date(year, month, 1)
+    
+    elif period.startswith('Q'):
+        # Quarterly data: Q01 = Q1, Q02 = Q2, etc.
+        quarter = int(period[1:])
+        month = (quarter - 1) * 3 + 1  # Q1=Jan, Q2=Apr, Q3=Jul, Q4=Oct
+        return date(year, month, 1)
+    
+    elif period.startswith('A'):
+        # Annual data: A01 = January 1st
+        return date(year, 1, 1)
+    
+    elif period.startswith('S'):
+        # Semiannual data: S01 = January, S02 = July
+        semester = int(period[1:])
+        month = 1 if semester == 1 else 7
+        return date(year, month, 1)
+    
+    else:
+        # Fallback: try to extract month if it's a number
+        try:
+            month = int(period)
+            if 1 <= month <= 12:
+                return date(year, month, 1)
+        except ValueError:
+            pass
+        
+        # If we can't parse it, default to January 1st
+        log.warning(f"Could not parse period '{period}' for year {year}, defaulting to January 1st")
+        return date(year, 1, 1)
+
 
 class BLSDataRepository:
     def __init__(self, session: Session):
@@ -78,6 +132,7 @@ class BLSDataRepository:
                         # Update existing point
                         existing_point.value = float(value)
                         existing_point.period_name = data_point.get('periodName')
+                        existing_point.date = period_to_date(year, period)
                         footnotes = data_point.get('footnotes')
                         if isinstance(footnotes, (list, dict)):
                             footnotes = str(footnotes)
@@ -92,6 +147,7 @@ class BLSDataRepository:
                             year=year,
                             period=period,
                             period_name=data_point.get('periodName'),
+                            date=period_to_date(year, period),
                             value=float(value),
                             footnotes=str(data_point.get('footnotes')) if data_point.get('footnotes') else None,
                             extraction_id=extraction_id

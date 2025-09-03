@@ -1,6 +1,6 @@
 # bls_data/database/models.py
 
-from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, ForeignKey, Index, UniqueConstraint, Numeric
+from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, Date, ForeignKey, Index, UniqueConstraint, Numeric
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -53,6 +53,7 @@ class BLSDataPoint(Base):
     year = Column(Integer, nullable=False)
     period = Column(String(10), nullable=False)
     period_name = Column(String(50))
+    date = Column(Date)  # Clean datetime column derived from year + period
     value = Column(Numeric(15, 4))
     footnotes = Column(Text)
     data_source = Column(String(20), default='api')
