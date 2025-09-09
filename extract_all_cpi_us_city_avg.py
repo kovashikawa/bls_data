@@ -175,8 +175,8 @@ def main():
         # Use a reasonable historical range that covers most CPI data
         data = extract_cpi_data_in_batches(
             series_ids=series_ids,
-            start_year=1984,  # Start from 1984 (40 years of data)
-            end_year=2024,    # Current year
+            start_year=1913,  
+            end_year=2025,    # Current year
             batch_size=50,    # BLS API limit
             use_database=True  # Enable caching for performance
         )
