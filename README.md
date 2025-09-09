@@ -28,6 +28,42 @@ The project currently focuses on time‑series data from the v2 BLS timeseries A
 
 ## Installation
 
+### Option 1: Using UV (Recommended)
+
+1. Install `uv` if you haven't already:
+```bash
+pip install uv
+# or
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+2. Clone this repository:
+```bash
+git clone https://github.com/kovashikawa/bls_data.git
+cd bls_data
+```
+
+3. Install dependencies:
+```bash
+# Install production dependencies
+uv sync
+
+# Or install all dependencies (including dev and test)
+uv sync --all-extras
+```
+
+4. Run commands in the UV environment:
+```bash
+# Run any Python script
+uv run python scripts/test_cpi_extraction.py
+
+# Or use the convenience scripts
+./scripts/uv-commands.sh install
+./scripts/uv-commands.sh run python scripts/test_cpi_extraction.py
+```
+
+### Option 2: Using pip (Traditional)
+
 1. Clone this repository:
 ```bash
 git clone https://github.com/kovashikawa/bls_data.git
@@ -90,6 +126,14 @@ By default the helper will look for a `code_mapping.csv/.json` file in the data_
 To fetch data directly from the terminal you can run the main script. Here is an example fetching the same three series and saving the output to a CSV file:
 
 ```bash
+# Using UV (recommended)
+uv run python -m bls_data.data_extraction.main \
+  cpi_all_items ces_all_employees unemployment_rate \
+  --start 2018 --end 2023 \
+  --catalog \
+  --out data/bls_data.csv
+
+# Or using traditional pip
 python -m bls_data.data_extraction.main \
   cpi_all_items ces_all_employees unemployment_rate \
   --start 2018 --end 2023 \
@@ -98,6 +142,48 @@ python -m bls_data.data_extraction.main \
 ```
 
 This will create `data/bls_data.csv` containing a tidy table with columns such as `series_id`, `alias`, `year`, `period`, `period_name`, `value`, `seasonality`, `series_title`, `survey_name`, `area`, `item`, and `footnotes`.
+
+### UV Commands
+
+The repository includes convenient UV commands for common operations:
+
+```bash
+# Install dependencies
+uv sync                    # Production dependencies
+uv sync --all-extras      # All dependencies (dev, test, docs)
+
+# Run scripts
+uv run python scripts/test_cpi_extraction.py
+uv run python setup_database.py
+
+# Development commands
+uv run black .            # Format code
+uv run isort .            # Sort imports
+uv run flake8 .           # Lint code
+uv run mypy .             # Type checking
+uv run pytest             # Run tests
+uv run pytest --cov      # Run tests with coverage
+
+# Package management
+uv add requests           # Add a dependency
+uv add --dev pytest      # Add a dev dependency
+uv remove requests        # Remove a dependency
+uv sync --upgrade         # Update dependencies
+```
+
+### Makefile Commands
+
+For even easier usage, you can use the included Makefile:
+
+```bash
+make install              # Install dependencies
+make run python scripts/test_cpi_extraction.py
+make test                 # Run tests
+make format               # Format code
+make lint                 # Lint code
+make clean                # Clean up
+make info                 # Show project info
+```
 
 ### Building a CPI series master list
 

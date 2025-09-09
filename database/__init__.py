@@ -1,21 +1,29 @@
 # bls_data/database/__init__.py
 
 from .config import DatabaseConfig
-from .models import Base, BLSSeries, BLSDataPoint, BLSAlias, BLSExtractionLog, BLSDataQuality, BLSDataFreshness
+from .models import (
+    Base,
+    BLSAlias,
+    BLSDataFreshness,
+    BLSDataPoint,
+    BLSDataQuality,
+    BLSExtractionLog,
+    BLSSeries,
+)
 from .repository import BLSDataRepository
-from .utils import setup_database, load_initial_series_metadata, get_database_stats
+from .utils import get_database_stats, load_initial_series_metadata, setup_database
 
 __all__ = [
-    'DatabaseConfig',
-    'Base',
-    'BLSSeries',
-    'BLSDataPoint', 
-    'BLSAlias',
-    'BLSExtractionLog',
-    'BLSDataQuality',
-    'BLSDataFreshness',
-    'BLSDataRepository',
-    'setup_database',
-    'load_initial_series_metadata',
-    'get_database_stats'
+    "DatabaseConfig",
+    "Base",
+    "BLSSeries",
+    "BLSDataPoint",
+    "BLSAlias",
+    "BLSExtractionLog",
+    "BLSDataQuality",
+    "BLSDataFreshness",
+    "BLSDataRepository",
+    "setup_database",
+    "load_initial_series_metadata",
+    "get_database_stats",
 ]

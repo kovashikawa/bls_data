@@ -8,6 +8,7 @@ It also integrates with the cu_series_codes module to dynamically fetch CPI seri
 # Add project root to the Python path
 import sys
 from pathlib import Path
+
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import csv
@@ -26,7 +27,15 @@ def _norm_key(s: str) -> str:
     """
     Normalizes a string to be used as a key in the mapping dictionary.
     """
-    return s.strip().casefold().replace("-", "").replace("_", "").replace(" ", "").replace(".", "").replace("/", "")
+    return (
+        s.strip()
+        .casefold()
+        .replace("-", "")
+        .replace("_", "")
+        .replace(" ", "")
+        .replace(".", "")
+        .replace("/", "")
+    )
 
 
 def _read_csv_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
@@ -40,8 +49,13 @@ def _read_csv_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
             raise ValueError(f"{path.name} has no header row")
 
         cols = [c.strip().lower() for c in reader.fieldnames]
-        alias_col = next((c for c in ("alias", "name", "label", "code") if c in cols), None)
-        series_col = next((c for c in ("series", "series_id", "seriesid", "seriesId") if c in cols), None)
+        alias_col = next(
+            (c for c in ("alias", "name", "label", "code") if c in cols), None
+        )
+        series_col = next(
+            (c for c in ("series", "series_id", "seriesid", "seriesId") if c in cols),
+            None,
+        )
 
         if not alias_col or not series_col:
             if len(cols) == 2:
@@ -80,7 +94,9 @@ def _read_json_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
     if isinstance(data, dict):
         if "groups" in data and isinstance(data["groups"], list):
             for g in data["groups"]:
-                alias_raw = g.get("alias") or g.get("name") or g.get("label") or g.get("code")
+                alias_raw = (
+                    g.get("alias") or g.get("name") or g.get("label") or g.get("code")
+                )
                 sid = g.get("series") or g.get("series_id") or g.get("seriesid")
                 if alias_raw and sid:
                     mapping[_norm_key(str(alias_raw))] = sid
@@ -90,7 +106,9 @@ def _read_json_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
     elif isinstance(data, list):
         for g in data:
             if isinstance(g, dict):
-                alias_raw = g.get("alias") or g.get("name") or g.get("label") or g.get("code")
+                alias_raw = (
+                    g.get("alias") or g.get("name") or g.get("label") or g.get("code")
+                )
                 sid = g.get("series") or g.get("series_id") or g.get("seriesid")
                 if alias_raw and sid:
                     mapping[_norm_key(str(alias_raw))] = sid
@@ -115,7 +133,11 @@ def load_mapping(
     Loads a mapping from a file, searching in default locations if no path is provided.
     """
     base_dir = Path(__file__).parent
-    candidates = [Path(explicit_path)] if explicit_path else [base_dir / name for name in fallback_names]
+    candidates = (
+        [Path(explicit_path)]
+        if explicit_path
+        else [base_dir / name for name in fallback_names]
+    )
 
     for path in candidates:
         if path.exists():
@@ -127,7 +149,9 @@ def load_mapping(
                 else:
                     continue
                 if mapping:
-                    log.info(f"Loaded code mapping from {path.name} ({len(mapping)} entries)")
+                    log.info(
+                        f"Loaded code mapping from {path.name} ({len(mapping)} entries)"
+                    )
                     return mapping
             except Exception as e:
                 log.warning(f"Failed to read {path.name}: {e}")
@@ -147,7 +171,9 @@ def _parse_cu_filters(filter_str: str) -> Optional[Dict[str, str]]:
         filters = dict(item.split("=") for item in filter_str.split(","))
         return filters
     except ValueError:
-        log.warning(f"Invalid CU filter format: {filter_str}. Expected 'key1=value1,key2=value2'.")
+        log.warning(
+            f"Invalid CU filter format: {filter_str}. Expected 'key1=value1,key2=value2'."
+        )
         return None
 
 
@@ -190,7 +216,9 @@ def resolve_series_ids(
                 log.error(f"Failed to fetch CU series for '{token}': {e}")
             continue
 
-        looks_like_sid = any(ch.isdigit() for ch in token) and any(ch.isalpha() for ch in token)
+        looks_like_sid = any(ch.isdigit() for ch in token) and any(
+            ch.isalpha() for ch in token
+        )
         key = _norm_key(token)
         if key in mapping:
             mapped = mapping[key]
@@ -205,7 +233,9 @@ def resolve_series_ids(
             unknown.append(token)
 
     if unknown:
-        raise KeyError(f"Unknown codes (not BLS series IDs and not in mapping): {', '.join(sorted(set(unknown)))}")
+        raise KeyError(
+            f"Unknown codes (not BLS series IDs and not in mapping): {', '.join(sorted(set(unknown)))}"
+        )
 
     # Deduplicate series IDs while preserving order
     seen = set()

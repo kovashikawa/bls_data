@@ -22,9 +22,14 @@ def parse_results_to_df(
         series_id = s.get("seriesID")
         cat = s.get("catalog", {})
         for item in s.get("data", []):
-            footnotes = "; ".join(
-                fn.get("text", "") for fn in item.get("footnotes", []) if fn and fn.get("text")
-            ) or None
+            footnotes = (
+                "; ".join(
+                    fn.get("text", "")
+                    for fn in item.get("footnotes", [])
+                    if fn and fn.get("text")
+                )
+                or None
+            )
             rows.append(
                 {
                     "series_id": series_id,
@@ -32,7 +37,11 @@ def parse_results_to_df(
                     "year": int(item.get("year")),
                     "period": item.get("period"),
                     "period_name": item.get("periodName"),
-                    "value": float(item.get("value")) if item.get("value") not in (None, "") else None,
+                    "value": (
+                        float(item.get("value"))
+                        if item.get("value") not in (None, "")
+                        else None
+                    ),
                     "latest": s.get("latest"),
                     "seasonality": cat.get("seasonality"),
                     "series_title": cat.get("seriesTitle"),
@@ -64,4 +73,8 @@ def parse_results_to_df(
             ]
         )
 
-    return pd.DataFrame(rows).sort_values(["series_id", "year", "period"]).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["series_id", "year", "period"])
+        .reset_index(drop=True)
+    )

@@ -212,3 +212,7 @@ __marimo__/
 data/*.csv
 !cu_series/cpi_series_master_list.csv
 !data_extraction/code_mapping.csv
+
+# UV package manager
+.uv/
+uv.lock
