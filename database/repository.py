@@ -4,7 +4,7 @@ import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import pandas as pd
 from sqlalchemy import and_, desc, func, or_, text
@@ -81,8 +81,8 @@ class BLSDataRepository:
         self.session = session
 
     def upsert_series_data(
-        self, series_data: List[Dict], extraction_id: str = None
-    ) -> Tuple[int, int, int]:
+        self, series_data: list[dict], extraction_id: str = None
+    ) -> tuple[int, int, int]:
         """Insert or update series data with conflict resolution
         Returns: (inserted_count, updated_count, skipped_count)
         """
@@ -198,7 +198,7 @@ class BLSDataRepository:
 
     def get_series_data(
         self,
-        series_ids: List[str],
+        series_ids: list[str],
         start_year: int = None,
         end_year: int = None,
         include_metadata: bool = True,
@@ -257,7 +257,7 @@ class BLSDataRepository:
             log.error(f"Error retrieving series data: {e}")
             return pd.DataFrame()
 
-    def get_data_freshness(self, series_ids: List[str]) -> Dict[str, Dict]:
+    def get_data_freshness(self, series_ids: list[str]) -> dict[str, dict]:
         """Get freshness information for series"""
         try:
             freshness_data = (
@@ -308,7 +308,7 @@ class BLSDataRepository:
             log.error(f"Error updating freshness tracking: {e}")
             raise
 
-    def get_stale_series(self, max_age_hours: int = 24) -> List[str]:
+    def get_stale_series(self, max_age_hours: int = 24) -> list[str]:
         """Get series that need updating based on age"""
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
@@ -330,7 +330,7 @@ class BLSDataRepository:
             log.error(f"Error retrieving stale series: {e}")
             return []
 
-    def search_series(self, query: str, limit: int = 100) -> List[Dict]:
+    def search_series(self, query: str, limit: int = 100) -> list[dict]:
         """Full-text search for series"""
         try:
             # Use PostgreSQL full-text search
@@ -392,7 +392,7 @@ class BLSDataRepository:
     def log_extraction(
         self,
         extraction_id: str,
-        series_ids: List[str],
+        series_ids: list[str],
         start_year: int = None,
         end_year: int = None,
         status: str = "success",
@@ -402,7 +402,7 @@ class BLSDataRepository:
         error_message: str = None,
         api_calls_made: int = 0,
         extraction_duration_seconds: int = 0,
-        metadata: Dict = None,
+        metadata: dict = None,
     ):
         """Log extraction details"""
         try:

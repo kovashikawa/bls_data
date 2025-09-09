@@ -17,8 +17,11 @@ help:
 	@echo "  run <command>    Run a command in the uv environment"
 	@echo "  test             Run tests"
 	@echo "  test-coverage    Run tests with coverage report"
-	@echo "  format           Format code with black and isort"
-	@echo "  lint             Lint code with flake8 and mypy"
+	@echo "  format           Format code with ruff, black and isort"
+	@echo "  lint             Lint code with ruff, flake8 and mypy"
+	@echo "  ruff-check       Run ruff linting only"
+	@echo "  ruff-format      Run ruff formatting only"
+	@echo "  ruff-fix         Run ruff auto-fix"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  clean            Clean up build artifacts and cache"
@@ -66,6 +69,16 @@ format:
 # Lint code
 lint:
 	@./scripts/uv-commands.sh lint
+
+# Ruff-specific commands
+ruff-check:
+	@./scripts/uv-commands.sh ruff-check
+
+ruff-format:
+	@./scripts/uv-commands.sh ruff-format
+
+ruff-fix:
+	@./scripts/uv-commands.sh ruff-fix
 
 # Clean up
 clean:

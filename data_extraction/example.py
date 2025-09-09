@@ -76,7 +76,7 @@ def run_basic_example():
                 log.info(bls_dataframe.head(10).to_string(index=False))
 
             log.info(f"\nTotal rows fetched: {len(bls_dataframe)}")
-            log.info(f"Data source: BLS API (no database caching)")
+            log.info("Data source: BLS API (no database caching)")
         else:
             log.warning(
                 "The request was successful, but no data was returned for the specified series and years."
@@ -138,7 +138,7 @@ def run_database_example():
         api_time = time.time() - start_time
         log.info(f"✅ First run completed in {api_time:.2f} seconds")
         log.info(f"   Data shape: {bls_dataframe_api.shape}")
-        log.info(f"   Data source: BLS API (stored in database)")
+        log.info("   Data source: BLS API (stored in database)")
 
         # Second run - use database cache
         log.info("\n2. Second run (Database Cache)...")
@@ -157,7 +157,7 @@ def run_database_example():
         cache_time = time.time() - start_time
         log.info(f"✅ Second run completed in {cache_time:.2f} seconds")
         log.info(f"   Data shape: {bls_dataframe_cache.shape}")
-        log.info(f"   Data source: Database cache")
+        log.info("   Data source: Database cache")
 
         # Performance comparison
         if api_time > 0:
@@ -167,7 +167,7 @@ def run_database_example():
             )
 
         # Data consistency check
-        log.info(f"\n📊 Data consistency check:")
+        log.info("\n📊 Data consistency check:")
         log.info(f"   Data identical: {bls_dataframe_api.equals(bls_dataframe_cache)}")
         log.info(
             f"   Same number of rows: {len(bls_dataframe_api) == len(bls_dataframe_cache)}"

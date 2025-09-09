@@ -12,7 +12,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from .formatters import BLSFormatter
 
@@ -144,7 +144,7 @@ def setup_logging(
     )
 
     # Setup root logger
-    root_logger = _logging_config.setup_logger("bls_data", "bls_data.log")
+    _logging_config.setup_logger("bls_data", "bls_data.log")
 
     # Configure third-party loggers
     logging.getLogger("urllib3").setLevel(logging.WARNING)

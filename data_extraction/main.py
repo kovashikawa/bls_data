@@ -3,10 +3,11 @@
 This is the main script for the BLS data fetching application. It handles command-line arguments,
 orchestrates the data fetching process, and outputs the results to a CSV file or the console.
 """
+
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import pandas as pd
 
@@ -20,7 +21,7 @@ log = get_logger(__name__)
 
 
 def get_bls_data(
-    codes_or_ids: List[str],
+    codes_or_ids: list[str],
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
     *,
@@ -92,7 +93,7 @@ def get_bls_data(
     return parse_results_to_df(data, reverse_map)
 
 
-def _parse_args(argv: List[str]) -> argparse.Namespace:
+def _parse_args(argv: list[str]) -> argparse.Namespace:
     """
     Parses command-line arguments for the script.
     """
@@ -154,7 +155,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     return args
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     """
     The main function for the script, handling argument parsing and data fetching.
     """

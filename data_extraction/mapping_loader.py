@@ -14,7 +14,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 import csv
 import json
 import logging
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from collections.abc import Iterable
+from typing import Optional, Union
 
 # Assumes the script is run from a context where 'cu_series' is in the Python path.
 # This is typically the case if you run from the project root.
@@ -38,11 +39,11 @@ def _norm_key(s: str) -> str:
     )
 
 
-def _read_csv_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
+def _read_csv_mapping(path: Path) -> dict[str, Union[str, list[str]]]:
     """
     Reads a CSV file and creates a mapping from aliases to series IDs.
     """
-    mapping: Dict[str, Union[str, List[str]]] = {}
+    mapping: dict[str, Union[str, list[str]]] = {}
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -83,14 +84,14 @@ def _read_csv_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
     return mapping
 
 
-def _read_json_mapping(path: Path) -> Dict[str, Union[str, List[str]]]:
+def _read_json_mapping(path: Path) -> dict[str, Union[str, list[str]]]:
     """
     Reads a JSON file and creates a mapping from aliases to series IDs.
     """
     with path.open(encoding="utf-8") as f:
         data = json.load(f)
 
-    mapping: Dict[str, Union[str, List[str]]] = {}
+    mapping: dict[str, Union[str, list[str]]] = {}
     if isinstance(data, dict):
         if "groups" in data and isinstance(data["groups"], list):
             for g in data["groups"]:
@@ -128,7 +129,7 @@ def load_mapping(
         "series_map.json",
         "series_mapping.json",
     ),
-) -> Dict[str, Union[str, List[str]]]:
+) -> dict[str, Union[str, list[str]]]:
     """
     Loads a mapping from a file, searching in default locations if no path is provided.
     """
@@ -159,7 +160,7 @@ def load_mapping(
     return {}
 
 
-def _parse_cu_filters(filter_str: str) -> Optional[Dict[str, str]]:
+def _parse_cu_filters(filter_str: str) -> Optional[dict[str, str]]:
     """
     Parses a filter string for CU series codes.
     Example: "area_code=0000,item_code=SA0"
@@ -179,8 +180,8 @@ def _parse_cu_filters(filter_str: str) -> Optional[Dict[str, str]]:
 
 def resolve_series_ids(
     codes_or_ids: Iterable[str],
-    mapping: Optional[Dict[str, Union[str, List[str]]]] = None,
-) -> Tuple[List[str], Dict[str, List[str]]]:
+    mapping: Optional[dict[str, Union[str, list[str]]]] = None,
+) -> tuple[list[str], dict[str, list[str]]]:
     """
     Resolves human-friendly codes to BLS series IDs using the provided mapping.
     Also handles dynamic fetching of CU series IDs with a 'CU:' prefix.
@@ -190,9 +191,9 @@ def resolve_series_ids(
     - "CU:area_code=0000,item_code=SA0" (U.S. City Average, All Items)
     """
     mapping = mapping or {}
-    series_ids: List[str] = []
-    reverse_map: Dict[str, List[str]] = {}
-    unknown: List[str] = []
+    series_ids: list[str] = []
+    reverse_map: dict[str, list[str]] = {}
+    unknown: list[str] = []
 
     for token in codes_or_ids:
         token = str(token).strip()

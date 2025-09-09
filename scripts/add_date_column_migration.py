@@ -13,11 +13,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import text
+
 # Add the current directory to the Python path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
-
-from sqlalchemy import text
 
 from bls_logging.config import get_logger, setup_logging
 from database.config import DatabaseConfig
@@ -99,9 +99,9 @@ def add_date_column():
             result = session.execute(
                 text(
                     """
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'bls_data_points' 
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'bls_data_points'
                 AND column_name = 'date'
             """
                 )
@@ -114,7 +114,7 @@ def add_date_column():
                 session.execute(
                     text(
                         """
-                    ALTER TABLE bls_data_points 
+                    ALTER TABLE bls_data_points
                     ADD COLUMN date DATE
                 """
                     )
@@ -172,7 +172,7 @@ def add_date_column():
                 session.execute(
                     text(
                         """
-                    CREATE INDEX IF NOT EXISTS idx_bls_data_points_date 
+                    CREATE INDEX IF NOT EXISTS idx_bls_data_points_date
                     ON bls_data_points(date)
                 """
                     )
@@ -195,7 +195,7 @@ def add_date_column():
 
             log.info(f"📊 Total data points: {total_points:,}")
             log.info(f"📊 Data points with dates: {points_with_dates:,}")
-            log.info(f"📊 Coverage: {(points_with_dates/total_points*100):.1f}%")
+            log.info(f"📊 Coverage: {(points_with_dates / total_points * 100):.1f}%")
 
             # Show sample of converted data
             sample_points = (

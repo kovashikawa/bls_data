@@ -34,7 +34,7 @@ def extract_cpi_data(start_year=None, end_year=None, max_series=None, save_to_cs
             f"🔍 Extracting CPI data for U.S. city average ({start_year}-{end_year})"
         )
     else:
-        log.info(f"🔍 Extracting CPI data for U.S. city average (ALL AVAILABLE DATA)")
+        log.info("🔍 Extracting CPI data for U.S. city average (ALL AVAILABLE DATA)")
 
     # Get all U.S. city average series
     all_series = get_cu_series_codes({"area_code": "0000"})

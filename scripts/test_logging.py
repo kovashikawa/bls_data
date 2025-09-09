@@ -47,7 +47,7 @@ def test_error_logging():
     try:
         log.info("About to cause an error for demonstration")
         # Intentionally cause an error
-        result = 1 / 0
+        raise ZeroDivisionError("Intentional error for demonstration")  # noqa: B018
     except Exception as e:
         log.error(f"Error occurred in test_error_logging: {e}", exc_info=True)
 

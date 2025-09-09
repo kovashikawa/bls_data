@@ -9,7 +9,7 @@ It shows database setup, data extraction with caching, and various database oper
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 # Add the current directory to the Python path
 current_dir = Path(__file__).parent.parent
@@ -143,7 +143,7 @@ def data_extraction_with_database_example():
     api_time = time.time() - start_time
     log.info(f"✅ First run completed in {api_time:.2f} seconds")
     log.info(f"   Data shape: {df1.shape}")
-    log.info(f"   Data source: API (stored in database)")
+    log.info("   Data source: API (stored in database)")
 
     # Second run - use database cache
     log.info("\n2. Second run (Database Cache)...")
@@ -162,7 +162,7 @@ def data_extraction_with_database_example():
     cache_time = time.time() - start_time
     log.info(f"✅ Second run completed in {cache_time:.2f} seconds")
     log.info(f"   Data shape: {df2.shape}")
-    log.info(f"   Data source: Database cache")
+    log.info("   Data source: Database cache")
 
     # Performance comparison
     if api_time > 0:
@@ -170,7 +170,7 @@ def data_extraction_with_database_example():
         log.info(f"\n🚀 Performance improvement: {speedup:.1f}x faster with caching")
 
     # Data consistency check
-    log.info(f"\n📊 Data consistency check:")
+    log.info("\n📊 Data consistency check:")
     log.info(f"   Data identical: {df1.equals(df2)}")
     log.info(f"   Same number of rows: {len(df1) == len(df2)}")
 
@@ -279,7 +279,7 @@ def advanced_database_operations_example():
             if not df_db.empty:
                 log.info(f"   Retrieved {len(df_db)} rows from database")
                 log.info(f"   Columns: {list(df_db.columns)}")
-                log.info(f"   Sample data:")
+                log.info("   Sample data:")
                 log.info(df_db.head(3).to_string(index=False))
             else:
                 log.info(

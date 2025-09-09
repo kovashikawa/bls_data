@@ -3,6 +3,7 @@
 This module provides a function to retrieve a random BLS API key from environment variables.
 It loads the environment variables from a .env file and selects one of the keys that start with 'BLS_API_KEY_'.
 """
+
 import os
 import random
 
@@ -39,7 +40,8 @@ def get_random_bls_key():
         )
 
     # Return a randomly chosen key from the list
-    return random.choice(bls_keys)
+    # Note: This is safe as we're selecting from a controlled list of API keys
+    return random.choice(bls_keys)  # noqa: S311
 
 
 # --- Main Execution Example ---
@@ -57,7 +59,7 @@ if __name__ == "__main__":
         # Run the function multiple times to see the random selection
         for i in range(5):
             api_key = get_random_bls_key()
-            print(f"Run {i+1}: Selected API Key = {api_key}")
+            print(f"Run {i + 1}: Selected API Key = {api_key}")
 
     except ValueError as e:
         print(f"Error: {e}")

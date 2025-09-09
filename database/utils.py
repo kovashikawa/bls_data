@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 from .config import DatabaseConfig
 from .models import Base
@@ -105,7 +105,7 @@ def create_database_indexes():
         log.error(f"Error creating database indexes: {e}")
 
 
-def get_database_stats() -> Dict:
+def get_database_stats() -> dict:
     """Get database statistics"""
     try:
         from .config import DatabaseConfig
@@ -166,15 +166,13 @@ def backup_database(backup_path: str = None):
         db_config = DatabaseConfig()
         db_url = db_config.database_url
 
-        # Extract database name from URL
-        db_name = db_url.split("/")[-1]
-
         # Use pg_dump to create backup
         import subprocess
 
         cmd = ["pg_dump", db_url]
         with open(backup_path, "w") as f:
-            subprocess.run(cmd, stdout=f, check=True)
+            # Note: This is safe as we're using a known command (pg_dump) with a controlled URL
+            subprocess.run(cmd, stdout=f, check=True)  # noqa: S603
 
         log.info(f"Database backup created: {backup_path}")
 

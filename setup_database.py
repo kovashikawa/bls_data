@@ -31,7 +31,7 @@ def main():
     try:
         # Setup database connection and create tables
         log.info("1. Creating database connection and tables...")
-        db_config = setup_database()
+        setup_database()
         log.info("✅ Database tables created successfully")
 
         # Create additional indexes
