@@ -14,8 +14,8 @@ from typing import Any, Optional
 
 import pandas as pd
 
-# Add the current directory to the Python path (for executability)
-current_dir = Path(__file__).parent
+# Add the parent directory to the Python path (for executability)
+current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 
 from bls_logging.config import get_logger, setup_logging

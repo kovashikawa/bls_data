@@ -15,8 +15,8 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-# Add the current directory to the Python path
-current_dir = Path(__file__).parent
+# Add the parent directory to the Python path
+current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 
 from bls_logging.config import get_logger, setup_logging

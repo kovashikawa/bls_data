@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Add the current directory to the Python path
+# Add the parent directory to the Python path
 current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 
