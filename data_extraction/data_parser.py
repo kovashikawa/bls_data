@@ -3,20 +3,21 @@
 This module provides functionality for parsing the JSON response from the BLS API
 and converting it into a pandas DataFrame for easier analysis and manipulation.
 """
-from typing import Any, Dict, List, Optional
+
+from typing import Any, Optional
 
 import pandas as pd
 
 
 def parse_results_to_df(
-    data: Dict[str, Any],
-    reverse_map: Optional[Dict[str, List[str]]] = None,
+    data: dict[str, Any],
+    reverse_map: Optional[dict[str, list[str]]] = None,
 ) -> pd.DataFrame:
     """
     Parses the JSON response from the BLS API and converts it into a pandas DataFrame.
     """
     reverse_map = reverse_map or {}
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
 
     for s in data.get("Results", {}).get("series", []):
         series_id = s.get("seriesID")

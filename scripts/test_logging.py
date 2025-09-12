@@ -9,8 +9,8 @@ and proper error tracking.
 import sys
 from pathlib import Path
 
-# Add the current directory to the Python path
-current_dir = Path(__file__).parent
+# Add the parent directory to the Python path
+current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 
 from bls_logging.config import (
@@ -47,7 +47,7 @@ def test_error_logging():
     try:
         log.info("About to cause an error for demonstration")
         # Intentionally cause an error
-        result = 1 / 0
+        raise ZeroDivisionError("Intentional error for demonstration")  # noqa: B018
     except Exception as e:
         log.error(f"Error occurred in test_error_logging: {e}", exc_info=True)
 

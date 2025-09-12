@@ -91,6 +91,7 @@ test_coverage() {
 format() {
     print_header "Formatting Code"
     check_uv
+    uv run ruff format .
     uv run black .
     uv run isort .
     print_status "Code formatted successfully!"
@@ -100,9 +101,32 @@ format() {
 lint() {
     print_header "Linting Code"
     check_uv
+    uv run ruff check .
     uv run flake8 .
     uv run mypy .
     print_status "Linting completed!"
+}
+
+# Ruff-specific commands
+ruff_check() {
+    print_header "Ruff Linting"
+    check_uv
+    uv run ruff check .
+    print_status "Ruff linting completed!"
+}
+
+ruff_format() {
+    print_header "Ruff Formatting"
+    check_uv
+    uv run ruff format .
+    print_status "Ruff formatting completed!"
+}
+
+ruff_fix() {
+    print_header "Ruff Auto-fix"
+    check_uv
+    uv run ruff check --fix .
+    print_status "Ruff auto-fix completed!"
 }
 
 # Clean up
@@ -195,8 +219,11 @@ show_help() {
     echo "  run <command>    Run a command in the uv environment"
     echo "  test             Run tests"
     echo "  test-coverage    Run tests with coverage report"
-    echo "  format           Format code with black and isort"
-    echo "  lint             Lint code with flake8 and mypy"
+    echo "  format           Format code with ruff, black and isort"
+    echo "  lint             Lint code with ruff, flake8 and mypy"
+    echo "  ruff-check       Run ruff linting only"
+    echo "  ruff-format      Run ruff formatting only"
+    echo "  ruff-fix         Run ruff auto-fix"
     echo "  clean            Clean up build artifacts and cache"
     echo "  info             Show project information"
     echo "  update           Update all dependencies"
@@ -238,6 +265,15 @@ case "${1:-help}" in
         ;;
     lint)
         lint
+        ;;
+    ruff-check)
+        ruff_check
+        ;;
+    ruff-format)
+        ruff_format
+        ;;
+    ruff-fix)
+        ruff_fix
         ;;
     clean)
         clean

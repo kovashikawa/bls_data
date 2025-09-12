@@ -157,9 +157,12 @@ uv run python scripts/test_cpi_extraction.py
 uv run python setup_database.py
 
 # Development commands
-uv run black .            # Format code
+uv run ruff format .      # Format code with ruff
+uv run ruff check .       # Lint code with ruff
+uv run ruff check --fix . # Auto-fix linting issues
+uv run black .            # Format code with black
 uv run isort .            # Sort imports
-uv run flake8 .           # Lint code
+uv run flake8 .           # Lint code with flake8
 uv run mypy .             # Type checking
 uv run pytest             # Run tests
 uv run pytest --cov      # Run tests with coverage
@@ -179,8 +182,11 @@ For even easier usage, you can use the included Makefile:
 make install              # Install dependencies
 make run python scripts/test_cpi_extraction.py
 make test                 # Run tests
-make format               # Format code
-make lint                 # Lint code
+make format               # Format code (ruff, black, isort)
+make lint                 # Lint code (ruff, flake8, mypy)
+make ruff-check           # Run ruff linting only
+make ruff-format          # Run ruff formatting only
+make ruff-fix             # Run ruff auto-fix
 make clean                # Clean up
 make info                 # Show project info
 ```

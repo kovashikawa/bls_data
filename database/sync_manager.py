@@ -2,7 +2,10 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Set
+
+import pandas as pd
+
+from .repository import BLSDataRepository
 
 
 class BLSSyncManager:
@@ -10,7 +13,7 @@ class BLSSyncManager:
         self.repository = repository
         self.client = client
 
-    def get_sync_strategy(self, series_ids: List[str]) -> Dict[str, str]:
+    def get_sync_strategy(self, series_ids: list[str]) -> dict[str, str]:
         """Determine sync strategy for each series:
         - 'skip': Data is fresh
         - 'incremental': Only fetch recent data
@@ -18,9 +21,9 @@ class BLSSyncManager:
         """
 
     def sync_series_data(
-        self, series_ids: List[str], force_refresh: bool = False
-    ) -> Dict:
+        self, series_ids: list[str], force_refresh: bool = False
+    ) -> dict:
         """Smart sync with minimal API calls"""
 
-    def get_data_with_smart_sync(self, series_ids: List[str]) -> pd.DataFrame:
+    def get_data_with_smart_sync(self, series_ids: list[str]) -> pd.DataFrame:
         """Get complete dataset with intelligent syncing"""

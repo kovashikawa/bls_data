@@ -89,7 +89,8 @@ def main():
 
             # Execute the command. capture_output=True saves the output to result.stdout.
             # text=True decodes it as text. check=True raises an error if curl fails.
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
+            # Note: This is safe as we're using a known command (curl) with controlled URLs
+            result = subprocess.run(command, capture_output=True, text=True, check=True)  # noqa: S603
 
             # Use the captured text output from curl
             text_data = io.StringIO(result.stdout)

@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-# Add the current directory to the Python path
+# Add the parent directory to the Python path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
@@ -31,7 +31,7 @@ def main():
     try:
         # Setup database connection and create tables
         log.info("1. Creating database connection and tables...")
-        db_config = setup_database()
+        setup_database()
         log.info("✅ Database tables created successfully")
 
         # Create additional indexes

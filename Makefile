@@ -1,7 +1,7 @@
 # BLS Data Repository - Makefile for UV Commands
 # This Makefile provides convenient shortcuts for common uv operations
 
-.PHONY: help install install-dev install-all run test test-coverage format lint clean info update add add-dev remove
+.PHONY: help install install-dev install-all run test test-coverage format lint clean info update add add-dev remove api-start api-test api-install
 
 # Default target
 help:
@@ -17,8 +17,16 @@ help:
 	@echo "  run <command>    Run a command in the uv environment"
 	@echo "  test             Run tests"
 	@echo "  test-coverage    Run tests with coverage report"
-	@echo "  format           Format code with black and isort"
-	@echo "  lint             Lint code with flake8 and mypy"
+	@echo "  format           Format code with ruff, black and isort"
+	@echo "  lint             Lint code with ruff, flake8 and mypy"
+	@echo "  ruff-check       Run ruff linting only"
+	@echo "  ruff-format      Run ruff formatting only"
+	@echo "  ruff-fix         Run ruff auto-fix"
+	@echo ""
+	@echo "API:"
+	@echo "  api-install      Install API dependencies"
+	@echo "  api-start        Start the RESTful API server"
+	@echo "  api-test         Test the API functionality"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  clean            Clean up build artifacts and cache"
@@ -67,6 +75,16 @@ format:
 lint:
 	@./scripts/uv-commands.sh lint
 
+# Ruff-specific commands
+ruff-check:
+	@./scripts/uv-commands.sh ruff-check
+
+ruff-format:
+	@./scripts/uv-commands.sh ruff-format
+
+ruff-fix:
+	@./scripts/uv-commands.sh ruff-fix
+
 # Clean up
 clean:
 	@./scripts/uv-commands.sh clean
@@ -112,3 +130,16 @@ extract-cpi:
 # Test CPI extraction
 test-cpi:
 	@./scripts/uv-commands.sh run python scripts/test_cpi_extraction.py
+
+# API commands
+api-install:
+	@echo "Installing API dependencies..."
+	@./venv/bin/pip install fastapi "uvicorn[standard]" "psycopg[binary]" pydantic python-multipart
+
+api-start:
+	@echo "Starting BLS Data API server..."
+	@./start_api.sh
+
+api-test:
+	@echo "Testing API functionality..."
+	@./venv/bin/python test_api.py

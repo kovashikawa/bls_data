@@ -10,7 +10,7 @@ import logging
 import sys
 import traceback
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class BLSFormatter(logging.Formatter):

@@ -10,12 +10,12 @@ for caching and performance optimization.
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import pandas as pd
 
-# Add the current directory to the Python path (for executability)
-current_dir = Path(__file__).parent
+# Add the parent directory to the Python path (for executability)
+current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 
 from bls_logging.config import get_logger, setup_logging
@@ -27,7 +27,7 @@ setup_logging(log_level="INFO", log_dir="logs", console_output=True, file_output
 log = get_logger(__name__)
 
 
-def get_us_city_avg_series() -> List[str]:
+def get_us_city_avg_series() -> list[str]:
     """
     Get all CPI series IDs for U.S. city average area.
 
@@ -44,7 +44,7 @@ def get_us_city_avg_series() -> List[str]:
 
 
 def extract_cpi_data_in_batches(
-    series_ids: List[str],
+    series_ids: list[str],
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
     batch_size: int = 50,
@@ -67,7 +67,7 @@ def extract_cpi_data_in_batches(
     if start_year and end_year:
         log.info(f"📅 Date range: {start_year}-{end_year}")
     else:
-        log.info(f"📅 Date range: ALL AVAILABLE DATA (no year limits)")
+        log.info("📅 Date range: ALL AVAILABLE DATA (no year limits)")
     log.info(f"🔄 Batch size: {batch_size}")
     log.info(f"💾 Database caching: {'Enabled' if use_database else 'Disabled'}")
 
@@ -105,7 +105,7 @@ def extract_cpi_data_in_batches(
                     f"   ✅ Extracted {len(batch_data)} rows in {extraction_time:.2f} seconds"
                 )
                 log.info(
-                    f"   📈 Average: {len(batch_data)/len(batch_series):.1f} rows per series"
+                    f"   📈 Average: {len(batch_data) / len(batch_series):.1f} rows per series"
                 )
             else:
                 log.warning(f"   ⚠️  No data returned for batch {batch_num}")
@@ -121,7 +121,7 @@ def extract_cpi_data_in_batches(
     if all_data:
         # Combine all batches
         combined_data = pd.concat(all_data, ignore_index=True)
-        log.info(f"\\n🎉 Extraction completed!")
+        log.info("\\n🎉 Extraction completed!")
         log.info(f"   📊 Total rows: {len(combined_data)}")
         log.info(f"   📈 Unique series: {combined_data['series_id'].nunique()}")
         log.info(
@@ -154,7 +154,7 @@ def save_data_to_csv(data: pd.DataFrame, filename: str = None) -> str:
     log.info(f"💾 Saving data to {output_path}")
     data.to_csv(output_path, index=False)
 
-    log.info(f"✅ Data saved successfully!")
+    log.info("✅ Data saved successfully!")
     log.info(f"   📁 File: {output_path}")
     log.info(f"   📊 Rows: {len(data)}")
     log.info(f"   📈 Columns: {len(data.columns)}")
@@ -208,7 +208,7 @@ def main():
         log.info("📈 EXTRACTION SUMMARY")
         log.info("=" * 60)
 
-        log.info(f"✅ Successfully extracted CPI data for U.S. city average")
+        log.info("✅ Successfully extracted CPI data for U.S. city average")
         log.info(f"   📊 Total data points: {len(data):,}")
         log.info(f"   📈 Unique series: {data['series_id'].nunique():,}")
         log.info(f"   📅 Date range: {data['year'].min()}-{data['year'].max()}")

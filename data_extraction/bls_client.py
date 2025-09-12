@@ -3,10 +3,14 @@
 This module provides a client for interacting with the Bureau of Labor Statistics (BLS) API.
 It includes functionality for making requests, handling retries, and managing API keys.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -113,7 +117,7 @@ class BLSClient:
             log.warning(f"Failed to create repository: {e}")
             return None
 
-    def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
         Sends a POST request to the BLS API with the given payload.
         """
@@ -131,11 +135,11 @@ class BLSClient:
         data = resp.json()
         if data.get("status") != "REQUEST_SUCCEEDED":
             raise RuntimeError(
-                f'BLS API returned status={data.get("status")}: {data.get("message")}'
+                f"BLS API returned status={data.get('status')}: {data.get('message')}"
             )
         return data
 
-    def _year_chunks(self, start: int, end: int) -> List[Tuple[int, int]]:
+    def _year_chunks(self, start: int, end: int) -> list[tuple[int, int]]:
         """
         Splits a date range into smaller chunks to respect API limits.
         """
@@ -163,7 +167,7 @@ class BLSClient:
         calculations: bool = False,
         annualaverage: bool = False,
         aspects: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Fetches data from the BLS API, automatically handling series and year limits.
         """
@@ -171,7 +175,7 @@ class BLSClient:
         if not sids:
             raise ValueError("No series IDs provided.")
 
-        merged: Dict[str, Any] = {
+        merged: dict[str, Any] = {
             "status": "REQUEST_SUCCEEDED",
             "Results": {"series": []},
             "message": None,
@@ -189,7 +193,7 @@ class BLSClient:
 
         for sc in series_chunks:
             for ys, ye in year_chunks:
-                payload: Dict[str, Any] = {"seriesid": sc}
+                payload: dict[str, Any] = {"seriesid": sc}
                 if self.api_key:
                     payload["registrationkey"] = self.api_key
                 if ys is not None:
@@ -222,7 +226,7 @@ class BLSClient:
         aspects: bool = False,
         use_cache: bool = True,
         force_refresh: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Enhanced fetch method that uses database for caching when available.
         Falls back to regular fetch if database is not available.
@@ -300,7 +304,7 @@ class BLSClient:
 
         return api_data
 
-    def _dataframe_to_api_format(self, df) -> Dict[str, Any]:
+    def _dataframe_to_api_format(self, df) -> dict[str, Any]:
         """Convert pandas DataFrame back to API format for compatibility."""
         if df.empty:
             return {
@@ -345,7 +349,7 @@ class BLSClient:
             "message": None,
         }
 
-    def _store_api_data(self, api_data: Dict[str, Any]) -> None:
+    def _store_api_data(self, api_data: dict[str, Any]) -> None:
         """Store API data in database."""
         if self.use_database:
             try:
@@ -383,8 +387,8 @@ class BLSClient:
                 log.warning(f"Failed to store data in database: {e}")
 
     def _combine_cached_and_api_data(
-        self, cached_df, api_data: Dict[str, Any], all_series_ids: List[str]
-    ) -> Dict[str, Any]:
+        self, cached_df, api_data: dict[str, Any], all_series_ids: list[str]
+    ) -> dict[str, Any]:
         """Combine cached and newly fetched API data."""
         # Convert cached DataFrame to API format
         cached_api_format = self._dataframe_to_api_format(cached_df)
