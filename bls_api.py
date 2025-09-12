@@ -16,15 +16,15 @@ Features:
 import json
 import os
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Union
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
 from psycopg.rows import dict_row
+from pydantic import BaseModel, Field, validator
 
 
 # Database Configuration
@@ -126,13 +126,13 @@ class BLSDataPointBase(BaseModel):
     data_source: Optional[str] = Field("api", max_length=20)
     extraction_id: Optional[str] = None
 
-    @validator('extraction_id')
+    @validator("extraction_id")
     def validate_extraction_id(cls, v):
         if v and not isinstance(v, str):
             try:
                 uuid.UUID(v)
             except ValueError:
-                raise ValueError('extraction_id must be a valid UUID string')
+                raise ValueError("extraction_id must be a valid UUID string")
         return v
 
     class Config:
@@ -151,13 +151,13 @@ class BLSDataPointUpdate(BaseModel):
     data_source: Optional[str] = Field(None, max_length=20)
     extraction_id: Optional[str] = None
 
-    @validator('extraction_id')
+    @validator("extraction_id")
     def validate_extraction_id(cls, v):
         if v and not isinstance(v, str):
             try:
                 uuid.UUID(v)
             except ValueError:
-                raise ValueError('extraction_id must be a valid UUID string')
+                raise ValueError("extraction_id must be a valid UUID string")
         return v
 
     class Config:
@@ -356,7 +356,7 @@ def get_table_columns(table_name: str) -> List[str]:
     ORDER BY ordinal_position
     """
     result = execute_query(query, (table_name,), fetch_all=True)
-    return [row['column_name'] for row in result]
+    return [row["column_name"] for row in result]
 
 
 # BLSSeries Endpoints
@@ -370,18 +370,18 @@ async def get_all_series(
     """Get all BLS series with optional filtering"""
     query = "SELECT * FROM bls_series WHERE 1=1"
     params = []
-    
+
     if survey_name:
         query += " AND survey_name ILIKE %s"
         params.append(f"%{survey_name}%")
-    
+
     if area:
         query += " AND area ILIKE %s"
         params.append(f"%{area}%")
-    
+
     query += " ORDER BY series_id LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -403,11 +403,11 @@ async def create_series(series: BLSSeriesCreate):
         series.base_period, series.begin_year, series.begin_period,
         series.end_year, series.end_period, series.latest, series.data_frequency
     )
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create series")
-    
+
     return result
 
 
@@ -416,10 +416,10 @@ async def get_series(series_id: str):
     """Get a specific BLS series by ID"""
     query = "SELECT * FROM bls_series WHERE series_id = %s"
     result = execute_query(query, (series_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Series not found")
-    
+
     return result
 
 
@@ -429,21 +429,21 @@ async def update_series(series_id: str, series: BLSSeriesUpdate):
     # Build dynamic update query
     update_fields = []
     params = []
-    
+
     for field, value in series.dict(exclude_unset=True).items():
         update_fields.append(f"{field} = %s")
         params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(series_id)
     query = f"UPDATE bls_series SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE series_id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Series not found")
-    
+
     return result
 
 
@@ -452,10 +452,10 @@ async def delete_series(series_id: str):
     """Delete a BLS series by ID"""
     query = "DELETE FROM bls_series WHERE series_id = %s"
     rows_affected = execute_query(query, (series_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Series not found")
-    
+
     return {"message": "Series deleted successfully"}
 
 
@@ -470,18 +470,18 @@ async def get_all_data_points(
     """Get all BLS data points with optional filtering"""
     query = "SELECT * FROM bls_data_points WHERE 1=1"
     params = []
-    
+
     if series_id:
         query += " AND series_id = %s"
         params.append(series_id)
-    
+
     if year:
         query += " AND year = %s"
         params.append(year)
-    
+
     query += " ORDER BY series_id, year, period LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -501,11 +501,11 @@ async def create_data_point(data_point: BLSDataPointCreate):
         data_point.period_name, data_point.date, data_point.value,
         data_point.footnotes, data_point.data_source, data_point.extraction_id
     )
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create data point")
-    
+
     return result
 
 
@@ -514,10 +514,10 @@ async def get_data_point(data_point_id: int):
     """Get a specific BLS data point by ID"""
     query = "SELECT * FROM bls_data_points WHERE id = %s"
     result = execute_query(query, (data_point_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Data point not found")
-    
+
     return result
 
 
@@ -526,21 +526,21 @@ async def update_data_point(data_point_id: int, data_point: BLSDataPointUpdate):
     """Update a BLS data point by ID"""
     update_fields = []
     params = []
-    
+
     for field, value in data_point.dict(exclude_unset=True).items():
         update_fields.append(f"{field} = %s")
         params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(data_point_id)
     query = f"UPDATE bls_data_points SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Data point not found")
-    
+
     return result
 
 
@@ -549,10 +549,10 @@ async def delete_data_point(data_point_id: int):
     """Delete a BLS data point by ID"""
     query = "DELETE FROM bls_data_points WHERE id = %s"
     rows_affected = execute_query(query, (data_point_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Data point not found")
-    
+
     return {"message": "Data point deleted successfully"}
 
 
@@ -566,14 +566,14 @@ async def get_all_aliases(
     """Get all BLS aliases with optional filtering"""
     query = "SELECT * FROM bls_aliases WHERE 1=1"
     params = []
-    
+
     if series_id:
         query += " AND series_id = %s"
         params.append(series_id)
-    
+
     query += " ORDER BY series_id, alias LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -585,11 +585,11 @@ async def create_alias(alias: BLSAliasCreate):
     VALUES (%s, %s, %s) RETURNING *
     """
     params = (alias.series_id, alias.alias, alias.description)
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create alias")
-    
+
     return result
 
 
@@ -598,10 +598,10 @@ async def get_alias(alias_id: int):
     """Get a specific BLS alias by ID"""
     query = "SELECT * FROM bls_aliases WHERE id = %s"
     result = execute_query(query, (alias_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Alias not found")
-    
+
     return result
 
 
@@ -610,21 +610,21 @@ async def update_alias(alias_id: int, alias: BLSAliasUpdate):
     """Update a BLS alias by ID"""
     update_fields = []
     params = []
-    
+
     for field, value in alias.dict(exclude_unset=True).items():
         update_fields.append(f"{field} = %s")
         params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(alias_id)
     query = f"UPDATE bls_aliases SET {', '.join(update_fields)} WHERE id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Alias not found")
-    
+
     return result
 
 
@@ -633,10 +633,10 @@ async def delete_alias(alias_id: int):
     """Delete a BLS alias by ID"""
     query = "DELETE FROM bls_aliases WHERE id = %s"
     rows_affected = execute_query(query, (alias_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Alias not found")
-    
+
     return {"message": "Alias deleted successfully"}
 
 
@@ -650,14 +650,14 @@ async def get_all_extraction_logs(
     """Get all BLS extraction logs with optional filtering"""
     query = "SELECT * FROM bls_extraction_logs WHERE 1=1"
     params = []
-    
+
     if status:
         query += " AND status = %s"
         params.append(status)
-    
+
     query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -679,11 +679,11 @@ async def create_extraction_log(log: BLSExtractionLogCreate):
         log.error_message, log.api_calls_made, log.extraction_duration_seconds,
         json.dumps(log.extraction_metadata) if log.extraction_metadata else None
     )
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create extraction log")
-    
+
     return result
 
 
@@ -692,10 +692,10 @@ async def get_extraction_log(extraction_id: str):
     """Get a specific BLS extraction log by ID"""
     query = "SELECT * FROM bls_extraction_logs WHERE extraction_id = %s"
     result = execute_query(query, (extraction_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Extraction log not found")
-    
+
     return result
 
 
@@ -704,25 +704,25 @@ async def update_extraction_log(extraction_id: str, log: BLSExtractionLogUpdate)
     """Update a BLS extraction log by ID"""
     update_fields = []
     params = []
-    
+
     for field, value in log.dict(exclude_unset=True).items():
-        if field == 'extraction_metadata' and value is not None:
+        if field == "extraction_metadata" and value is not None:
             update_fields.append(f"{field} = %s")
             params.append(json.dumps(value))
         else:
             update_fields.append(f"{field} = %s")
             params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(extraction_id)
     query = f"UPDATE bls_extraction_logs SET {', '.join(update_fields)} WHERE extraction_id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Extraction log not found")
-    
+
     return result
 
 
@@ -731,10 +731,10 @@ async def delete_extraction_log(extraction_id: str):
     """Delete a BLS extraction log by ID"""
     query = "DELETE FROM bls_extraction_logs WHERE extraction_id = %s"
     rows_affected = execute_query(query, (extraction_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Extraction log not found")
-    
+
     return {"message": "Extraction log deleted successfully"}
 
 
@@ -748,14 +748,14 @@ async def get_all_data_quality(
     """Get all BLS data quality records with optional filtering"""
     query = "SELECT * FROM bls_data_quality WHERE 1=1"
     params = []
-    
+
     if series_id:
         query += " AND series_id = %s"
         params.append(series_id)
-    
+
     query += " ORDER BY check_date DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -776,11 +776,11 @@ async def create_data_quality(quality: BLSDataQualityCreate):
         json.dumps(quality.statistics) if quality.statistics else None,
         quality.notes
     )
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create data quality record")
-    
+
     return result
 
 
@@ -789,10 +789,10 @@ async def get_data_quality(quality_id: int):
     """Get a specific BLS data quality record by ID"""
     query = "SELECT * FROM bls_data_quality WHERE id = %s"
     result = execute_query(query, (quality_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Data quality record not found")
-    
+
     return result
 
 
@@ -801,25 +801,25 @@ async def update_data_quality(quality_id: int, quality: BLSDataQualityUpdate):
     """Update a BLS data quality record by ID"""
     update_fields = []
     params = []
-    
+
     for field, value in quality.dict(exclude_unset=True).items():
-        if field == 'statistics' and value is not None:
+        if field == "statistics" and value is not None:
             update_fields.append(f"{field} = %s")
             params.append(json.dumps(value))
         else:
             update_fields.append(f"{field} = %s")
             params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(quality_id)
     query = f"UPDATE bls_data_quality SET {', '.join(update_fields)} WHERE id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Data quality record not found")
-    
+
     return result
 
 
@@ -828,10 +828,10 @@ async def delete_data_quality(quality_id: int):
     """Delete a BLS data quality record by ID"""
     query = "DELETE FROM bls_data_quality WHERE id = %s"
     rows_affected = execute_query(query, (quality_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Data quality record not found")
-    
+
     return {"message": "Data quality record deleted successfully"}
 
 
@@ -845,14 +845,14 @@ async def get_all_data_freshness(
     """Get all BLS data freshness records with optional filtering"""
     query = "SELECT * FROM bls_data_freshness WHERE 1=1"
     params = []
-    
+
     if series_id:
         query += " AND series_id = %s"
         params.append(series_id)
-    
+
     query += " ORDER BY last_extracted DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
-    
+
     return execute_query(query, tuple(params), fetch_all=True)
 
 
@@ -872,11 +872,11 @@ async def create_data_freshness(freshness: BLSDataFreshnessCreate):
         freshness.data_completeness, freshness.expected_update_frequency,
         freshness.next_expected_update, freshness.extraction_priority
     )
-    
+
     result = execute_query(query, params, fetch_one=True)
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create data freshness record")
-    
+
     return result
 
 
@@ -885,10 +885,10 @@ async def get_data_freshness(series_id: str):
     """Get a specific BLS data freshness record by series ID"""
     query = "SELECT * FROM bls_data_freshness WHERE series_id = %s"
     result = execute_query(query, (series_id,), fetch_one=True)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Data freshness record not found")
-    
+
     return result
 
 
@@ -897,21 +897,21 @@ async def update_data_freshness(series_id: str, freshness: BLSDataFreshnessUpdat
     """Update a BLS data freshness record by series ID"""
     update_fields = []
     params = []
-    
+
     for field, value in freshness.dict(exclude_unset=True).items():
         update_fields.append(f"{field} = %s")
         params.append(value)
-    
+
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
     params.append(series_id)
     query = f"UPDATE bls_data_freshness SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE series_id = %s RETURNING *"
-    
+
     result = execute_query(query, tuple(params), fetch_one=True)
     if not result:
         raise HTTPException(status_code=404, detail="Data freshness record not found")
-    
+
     return result
 
 
@@ -920,10 +920,10 @@ async def delete_data_freshness(series_id: str):
     """Delete a BLS data freshness record by series ID"""
     query = "DELETE FROM bls_data_freshness WHERE series_id = %s"
     rows_affected = execute_query(query, (series_id,))
-    
+
     if rows_affected == 0:
         raise HTTPException(status_code=404, detail="Data freshness record not found")
-    
+
     return {"message": "Data freshness record deleted successfully"}
 
 
