@@ -28,6 +28,10 @@ help:
 	@echo "  api-start        Start the RESTful API server"
 	@echo "  api-test         Test the API functionality"
 	@echo ""
+	@echo "Data Updates:"
+	@echo "  update-cpi       Update CPI data in database (comprehensive)"
+	@echo "  update-cpi-quick Quick CPI update (last 2 years only)"
+	@echo ""
 	@echo "Utilities:"
 	@echo "  clean            Clean up build artifacts and cache"
 	@echo "  info             Show project information"
@@ -143,3 +147,13 @@ api-start:
 api-test:
 	@echo "Testing API functionality..."
 	@./venv/bin/python test_api.py
+
+# Data update commands
+update-cpi:
+	@echo "Updating CPI data in database..."
+	@./update_cpi_data.sh
+
+update-cpi-quick:
+	@echo "Quick CPI update (last 2 years only)..."
+	@./venv/bin/python -c "import datetime; current_year = datetime.datetime.now().year; start_year = current_year - 2; print(f'Updating CPI data from {start_year} to {current_year}')"
+	@./venv/bin/python -m data_extraction.main cpi_all_items --start $(shell python3 -c "import datetime; print(datetime.datetime.now().year - 2)") --end $(shell python3 -c "import datetime; print(datetime.datetime.now().year)") --use-database --force-refresh --log INFO
