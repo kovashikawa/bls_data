@@ -29,3 +29,4 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 ./venv/bin/python bls_api.py
+

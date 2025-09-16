@@ -10,3 +10,4 @@ cd /Users/rafaelkovashikawa/Downloads/projects/bls_food/bls_data && \
   --force-refresh \
   --catalog \
   --log INFO
+
