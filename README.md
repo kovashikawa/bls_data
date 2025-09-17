@@ -26,6 +26,10 @@ The project currently focuses on time‑series data from the v2 BLS timeseries A
 
 - **CPI series code helper** – The cu_series/cu_series_codes.py module provides a function get_cu_series_codes() that reads the master CSV and returns CPI series IDs filtered by area or item code. For example, you can retrieve all series for the U.S. city average or All Items by passing filters such as {"area_code": "0000", "item_code": "SA0"}.
 
+- **MCP Server Integration** – A local Multi-Command Protocol (MCP) server (`mcp_server.py`) that provides wrapper tools for existing API functions, facilitating local debugging and experimentation. The server exposes tools for data retrieval, endpoint discovery, and advanced analytics.
+
+- **CPI Seasonality Analysis** – Advanced seasonality analysis tool that computes month-over-month percentage changes, calculates historical percentiles (25th, 50th, 75th), and generates visualizations comparing current year performance against historical patterns. Includes base64-encoded plot generation for easy integration.
+
 ## Installation
 
 ### Option 1: Using UV (Recommended)
@@ -50,6 +54,9 @@ uv sync
 
 # Or install all dependencies (including dev and test)
 uv sync --all-extras
+
+# Install additional MCP server dependencies
+uv add fastmcp matplotlib
 ```
 
 4. Run commands in the UV environment:
@@ -79,6 +86,11 @@ source venv/bin/activate  # On Windows use 'venv\Scripts\activate'
 3. Install dependencies from requirements.txt:
 ```bash
 pip install -r requirements.txt
+```
+
+4. Install additional dependencies for MCP server and seasonality analysis:
+```bash
+pip install fastmcp matplotlib
 ```
 
 ### Configure API keys
@@ -143,6 +155,62 @@ python -m bls_data.data_extraction.main \
 
 This will create `data/bls_data.csv` containing a tidy table with columns such as `series_id`, `alias`, `year`, `period`, `period_name`, `value`, `seasonality`, `series_title`, `survey_name`, `area`, `item`, and `footnotes`.
 
+### MCP Server (Multi-Command Protocol)
+
+The repository includes a local MCP server that provides wrapper tools for existing API functions, enabling integration with MCP-compatible clients like Cursor.
+
+#### Starting the MCP Server
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Start the MCP server
+python mcp_server.py
+```
+
+The server operates via stdio and exposes the following tools:
+
+#### Available MCP Tools
+
+**1. `get_series(series_id, start=None, end=None)`**
+- Fetches BLS data series by ID
+- Supports optional start/end year filtering
+- Returns structured data with metadata
+
+**2. `list_endpoints()`**
+- Returns comprehensive list of available functions
+- Shows data extraction functions and API endpoints
+- Provides 40+ REST API endpoints for database operations
+
+**3. `get_series_info(series_id)`**
+- Gets metadata information about a BLS series
+- Useful for understanding series properties
+
+**4. `analyze_cpi_seasonality(series_id, start=None, end=None)`**
+- Advanced seasonality analysis with percentile bands
+- Computes month-over-month percentage changes
+- Calculates historical percentiles (25th, 50th, 75th)
+- Generates base64-encoded visualization plots
+- Compares current year performance against historical patterns
+
+#### Example MCP Usage
+
+```python
+# In Cursor or other MCP-compatible client
+@bls-data.get_series series_id="CUUR0000SA0"
+@bls-data.analyze_cpi_seasonality series_id="CUUR0000SA0"
+@bls-data.list_endpoints
+```
+
+#### Seasonality Analysis Output
+
+The `analyze_cpi_seasonality` tool returns:
+- **Table**: Monthly percentile data (25th, 50th, 75th) and current year values
+- **Plot**: Base64-encoded PNG visualization
+- **Summary Stats**: Analysis period, data points, averages, and volatility
+- **Description**: Analysis overview and insights
+
 ### UV Commands
 
 The repository includes convenient UV commands for common operations:
@@ -181,6 +249,7 @@ For even easier usage, you can use the included Makefile:
 ```bash
 make install              # Install dependencies
 make run python scripts/test_cpi_extraction.py
+make run python mcp_server.py  # Start MCP server
 make test                 # Run tests
 make format               # Format code (ruff, black, isort)
 make lint                 # Lint code (ruff, flake8, mypy)
@@ -219,6 +288,7 @@ bls_data/
 │   ├── example.py          # demonstration script
 │   ├── code_mapping.csv    # sample alias → series mapping
 │   └── __init__.py
+├── mcp_server.py           # MCP server with BLS data tools
 ├── LICENSE
 ├── README.md (this file)
 └── requirements.txt
