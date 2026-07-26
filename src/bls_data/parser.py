@@ -5,6 +5,16 @@ from typing import Any, Optional
 import pandas as pd
 
 
+def _safe_float(val):
+    """Parse a value to float, returning None for non-numeric strings like '-'."""
+    if val is None or val == "" or val == "-":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_results_to_df(
     data: dict[str, Any],
     reverse_map: Optional[dict[str, list[str]]] = None,
@@ -32,11 +42,11 @@ def parse_results_to_df(
                     "year": int(item["year"]),
                     "period": item.get("period"),
                     "period_name": item.get("periodName"),
-                    "value": float(item["value"]) if item.get("value") not in (None, "") else None,
+                    "value": _safe_float(item.get("value")),
                     "latest": s.get("latest"),
-                    "series_title": cat.get("seriesTitle"),
-                    "survey_name": cat.get("surveyName"),
-                    "measure_data_type": cat.get("measureDataType"),
+                    "series_title": cat.get("series_title"),
+                    "survey_name": cat.get("survey_name"),
+                    "measure_data_type": cat.get("measure_data_type"),
                     "area": cat.get("area"),
                     "item": cat.get("item"),
                     "seasonality": cat.get("seasonality"),

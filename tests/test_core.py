@@ -19,7 +19,7 @@ class TestParser:
                 "series": [
                     {
                         "seriesID": "CUUR0000SA0",
-                        "catalog": {"seriesTitle": "CPI All Items", "seasonality": "U"},
+                        "catalog": {"series_title": "CPI All Items", "seasonality": "U"},
                         "data": [
                             {"year": "2024", "period": "M01", "periodName": "January", "value": "308.5", "footnotes": []},
                             {"year": "2024", "period": "M02", "periodName": "February", "value": "310.2", "footnotes": []},

@@ -68,9 +68,9 @@ def get_series_info(series_id: str) -> dict:
         cat = series_list[0].get("catalog", {})
         return {
             "series_id": series_id,
-            "title": cat.get("seriesTitle"),
-            "survey": cat.get("surveyName"),
-            "measure": cat.get("measureDataType"),
+            "title": cat.get("series_title"),
+            "survey": cat.get("survey_name"),
+            "measure": cat.get("measure_data_type"),
             "area": cat.get("area"),
             "item": cat.get("item"),
             "seasonality": cat.get("seasonality"),
