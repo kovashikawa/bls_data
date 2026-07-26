@@ -81,22 +81,69 @@ def get_series_info(series_id: str) -> dict:
 
 @mcp.tool()
 def search_series(query: str, limit: int = 10) -> dict:
-    """Search BLS series by keyword in titles.
+    """Search BLS series by keyword in the CPI master catalog.
 
-    Searches the CPI master list for matching series by name.
+    The CPI catalog contains 8,000+ series with full titles. For broader
+    discovery, use list_surveys() and popular_series() first.
+
     Args:
-        query: Search term
+        query: Search term (e.g. 'food', 'housing', 'energy', 'medical')
         limit: Max results
     """
     try:
         from bls_data.cpi import _MASTER_PATH
-        df = pd.read_csv(_MASTER_PATH, dtype=str)
-        mask = df["series_title"].str.contains(query, case=False, na=False)
-        results = df[mask].head(limit)
+        cpi = pd.read_csv(_MASTER_PATH, dtype=str)
+        mask = cpi["series_title"].str.contains(query, case=False, na=False)
+        results = cpi[mask].head(limit)
         return {
             "query": query,
             "count": len(results),
             "results": results[["series_id", "series_title"]].to_dict("records"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_surveys() -> dict:
+    """List all available BLS surveys with abbreviations and names.
+
+    Use this to discover what economic data categories are available (CPI, employment,
+    wages, PPI, productivity, etc.) before searching for specific series.
+    """
+    try:
+        client = _get_client()
+        surveys = client.list_surveys()
+        return {
+            "count": len(surveys),
+            "surveys": [
+                {"abbreviation": s.get("survey_abbreviation", s.get("surveyAbbreviation")),
+                 "name": s.get("survey_name", s.get("surveyName"))}
+                for s in surveys
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def popular_series(survey: Optional[str] = None) -> dict:
+    """Return the most-requested BLS series, optionally filtered by survey.
+
+    Args:
+        survey: Survey abbreviation (e.g. 'CU' for CPI, 'LN' for employment/unemployment,
+                'CE' for Current Employment Statistics). Omit for all popular series.
+    """
+    try:
+        client = _get_client()
+        series = client.get_popular_series(survey)
+        return {
+            "survey": survey or "all",
+            "count": len(series),
+            "series": [
+                {"series_id": s.get("seriesID"), "title": s.get("series_title", "")}
+                for s in series
+            ],
         }
     except Exception as e:
         return {"error": str(e)}

@@ -12,7 +12,7 @@ from urllib3.util import Retry
 
 from .api_key import get_random_bls_key
 
-BLS_V2_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+BLS_V2_URL = "https://api.bls.gov/publicAPI/v2"
 log = logging.getLogger(__name__)
 
 
@@ -113,7 +113,9 @@ class BLSClient:
 
         headers = {"Content-Type": "application/json"}
         try:
-            resp = self.session.post(self.url, json=payload, headers=headers, timeout=60)
+            resp = self.session.post(
+                f"{self.url}/timeseries/data/", json=payload, headers=headers, timeout=60
+            )
             resp.raise_for_status()
         except requests.HTTPError as e:
             body = resp.text[:500] if resp is not None else ""
@@ -139,6 +141,37 @@ class BLSClient:
             chunks.append((s, e))
             s = e + 1
         return chunks
+
+
+    def list_surveys(self) -> list[dict[str, str]]:
+        """Return all BLS surveys with abbreviations and names."""
+        resp = self.session.get(f"{self.url}/surveys", timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "REQUEST_SUCCEEDED":
+            raise RuntimeError(f"BLS surveys failed: {data.get('message')}")
+        return data.get("Results", {}).get("survey", [])
+
+    def get_survey_info(self, abbreviation: str) -> dict[str, Any]:
+        """Return metadata and popular series for a specific survey."""
+        resp = self.session.get(f"{self.url}/surveys/{abbreviation}", timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "REQUEST_SUCCEEDED":
+            raise RuntimeError(f"Survey '{abbreviation}' not found")
+        return data.get("Results", {}).get("survey", [{}])[0]
+
+    def get_popular_series(self, survey: Optional[str] = None) -> list[dict[str, str]]:
+        """Return popular BLS series, optionally filtered by survey abbreviation."""
+        url = f"{self.url}/timeseries/popular"
+        if survey:
+            url += f"?survey={survey}"
+        resp = self.session.get(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "REQUEST_SUCCEEDED":
+            raise RuntimeError(f"Popular series failed: {data.get('message')}")
+        return data.get("Results", {}).get("series", [])
 
 
 def fetch_bls_data(
