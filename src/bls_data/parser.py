@@ -1,8 +1,4 @@
-# data_parser.py
-"""
-This module provides functionality for parsing the JSON response from the BLS API
-and converting it into a pandas DataFrame for easier analysis and manipulation.
-"""
+"""Parse BLS API JSON responses into pandas DataFrames."""
 
 from typing import Any, Optional
 
@@ -13,9 +9,7 @@ def parse_results_to_df(
     data: dict[str, Any],
     reverse_map: Optional[dict[str, list[str]]] = None,
 ) -> pd.DataFrame:
-    """
-    Parses the JSON response from the BLS API and converts it into a pandas DataFrame.
-    """
+    """Convert BLS API JSON response to a tidy pandas DataFrame."""
     reverse_map = reverse_map or {}
     rows: list[dict[str, Any]] = []
 
@@ -35,21 +29,17 @@ def parse_results_to_df(
                 {
                     "series_id": series_id,
                     "alias": "|".join(reverse_map.get(series_id, [])) or None,
-                    "year": int(item.get("year")),
+                    "year": int(item["year"]),
                     "period": item.get("period"),
                     "period_name": item.get("periodName"),
-                    "value": (
-                        float(item.get("value"))
-                        if item.get("value") not in (None, "")
-                        else None
-                    ),
+                    "value": float(item["value"]) if item.get("value") not in (None, "") else None,
                     "latest": s.get("latest"),
-                    "seasonality": cat.get("seasonality"),
                     "series_title": cat.get("seriesTitle"),
                     "survey_name": cat.get("surveyName"),
                     "measure_data_type": cat.get("measureDataType"),
                     "area": cat.get("area"),
                     "item": cat.get("item"),
+                    "seasonality": cat.get("seasonality"),
                     "footnotes": footnotes,
                 }
             )
@@ -57,20 +47,9 @@ def parse_results_to_df(
     if not rows:
         return pd.DataFrame(
             columns=[
-                "series_id",
-                "alias",
-                "year",
-                "period",
-                "period_name",
-                "value",
-                "latest",
-                "seasonality",
-                "series_title",
-                "survey_name",
-                "measure_data_type",
-                "area",
-                "item",
-                "footnotes",
+                "series_id", "alias", "year", "period", "period_name",
+                "value", "latest", "series_title", "survey_name",
+                "measure_data_type", "area", "item", "seasonality", "footnotes",
             ]
         )
 
