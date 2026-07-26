@@ -85,7 +85,11 @@ class TestAPIKey:
             get_random_bls_key()
 
     def test_returns_key(self, monkeypatch):
+        import os
+        # Clear all real keys loaded at import time, then set test key
+        for k in list(os.environ):
+            if k.startswith("BLS_API_KEY_"):
+                monkeypatch.delenv(k, raising=False)
         monkeypatch.setenv("BLS_API_KEY_0", "test-key-abc")
-        monkeypatch.delenv("BLS_API_KEY_1", raising=False)
         key = get_random_bls_key()
         assert key == "test-key-abc"
