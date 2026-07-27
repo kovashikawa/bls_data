@@ -1,73 +1,244 @@
 [
   {
-    "question": "What was apparel CPI from 2021 through 2023?",
-    "tool": "get_series",
-    "arguments": {
-      "series_id": "CUUR0000SAA",
-      "start": "2021",
-      "end": "2023"
-    }
-  },
-  {
-    "question": "Show me the employment-population ratio trend.",
+    "question": "What did the employment to population ratio do from 2019 to 2024?",
     "tool": "get_series",
     "arguments": {
       "series_id": "LNS12300000",
-      "start": "2020"
-    }
+      "start": "2019",
+      "end": "2024"
+    },
+    "concept": "get_series:LNS12300000"
   },
   {
-    "question": "What's the CPI for new vehicles over the last 3 years?",
+    "question": "Do housing costs have seasonal variation?",
+    "tool": "analyze_cpi_seasonality",
+    "arguments": {
+      "series_id": "CUUR0000SAH"
+    },
+    "concept": "analyze_cpi_seasonality:CUUR0000SAH"
+  },
+  {
+    "question": "How have recreation prices changed since 2022?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SETA01",
+      "series_id": "CUUR0000SAR",
       "start": "2022"
-    }
+    },
+    "concept": "get_series:CUUR0000SAR"
   },
   {
-    "question": "What's the rent of primary residence CPI since 2020?",
+    "question": "What's the CPI for prescription drugs since 2020?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SEHA",
+      "series_id": "CUUR0000SEMF01",
       "start": "2020"
-    }
+    },
+    "concept": "get_series:CUUR0000SEMF01"
   },
   {
-    "question": "What BLS surveys are available?",
-    "tool": "list_surveys",
-    "arguments": {}
-  },
-  {
-    "question": "What surveys can I query through the BLS API?",
-    "tool": "list_surveys",
-    "arguments": {}
-  },
-  {
-    "question": "List the top PPI series.",
-    "tool": "popular_series",
+    "question": "Get the CPI for energy since 2019.",
+    "tool": "get_series",
     "arguments": {
-      "survey": "PC"
-    }
-  },
-  {
-    "question": "Search for CPI series about internet services.",
-    "tool": "search_series",
-    "arguments": {
-      "query": "internet"
-    }
+      "series_id": "CUUR0000SA0E",
+      "start": "2019"
+    },
+    "concept": "get_series:CUUR0000SA0E"
   },
   {
     "question": "What metadata is available for CPI All Items?",
     "tool": "get_series_info",
     "arguments": {
       "series_id": "CUUR0000SA0"
-    }
+    },
+    "concept": "get_series_info:CUUR0000SA0"
   },
   {
-    "question": "What seasonal patterns exist in apparel CPI?",
+    "question": "Show me popular job openings and turnover series.",
+    "tool": "popular_series",
+    "arguments": {
+      "survey": "JT"
+    },
+    "concept": "popular_series:JT"
+  },
+  {
+    "question": "Does electricity CPI vary seasonally?",
     "tool": "analyze_cpi_seasonality",
     "arguments": {
+      "series_id": "CUUR0000SEHF01"
+    },
+    "concept": "analyze_cpi_seasonality:CUUR0000SEHF01"
+  },
+  {
+    "question": "What are the catalog details for the unemployment rate?",
+    "tool": "get_series_info",
+    "arguments": {
+      "series_id": "LNS14000000"
+    },
+    "concept": "get_series_info:LNS14000000"
+  },
+  {
+    "question": "What was the CPI for services in 2023?",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAS",
+      "start": "2023",
+      "end": "2023"
+    },
+    "concept": "get_series:CUUR0000SAS"
+  },
+  {
+    "question": "What are the popular unemployment-related series?",
+    "tool": "popular_series",
+    "arguments": {
+      "survey": "LN"
+    },
+    "concept": "popular_series:LN"
+  },
+  {
+    "question": "Search for rent-related CPI series.",
+    "tool": "search_series",
+    "arguments": {
+      "query": "rent"
+    },
+    "concept": "search_series:rent"
+  },
+  {
+    "question": "Get the apparel consumer price index.",
+    "tool": "get_series",
+    "arguments": {
       "series_id": "CUUR0000SAA"
-    }
+    },
+    "concept": "get_series:CUUR0000SAA"
+  },
+  {
+    "question": "What series cover alcoholic beverages?",
+    "tool": "search_series",
+    "arguments": {
+      "query": "alcoholic beverages",
+      "limit": 10
+    },
+    "concept": "search_series:alcoholic beverages"
+  },
+  {
+    "question": "Get the gasoline all types index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SETB01"
+    },
+    "concept": "get_series:CUUR0000SETB01"
+  },
+  {
+    "question": "What are the popular Current Employment Statistics series?",
+    "tool": "popular_series",
+    "arguments": {
+      "survey": "CE"
+    },
+    "concept": "popular_series:CE"
+  },
+  {
+    "question": "What does the CES total nonfarm series cover?",
+    "tool": "get_series_info",
+    "arguments": {
+      "series_id": "CES0000000001"
+    },
+    "concept": "get_series_info:CES0000000001"
+  },
+  {
+    "question": "Get total nonfarm employment from 2019 to 2024.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CES0000000001",
+      "start": "2019",
+      "end": "2024"
+    },
+    "concept": "get_series:CES0000000001"
+  },
+  {
+    "question": "Get the airline fares index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SETG01"
+    },
+    "concept": "get_series:CUUR0000SETG01"
+  },
+  {
+    "question": "Get the food consumer price index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAF1"
+    },
+    "concept": "get_series:CUUR0000SAF1"
+  },
+  {
+    "question": "Show me all available survey programs at BLS.",
+    "tool": "list_surveys",
+    "arguments": {},
+    "concept": "list_surveys"
+  },
+  {
+    "question": "Show me natural gas utility prices from 2021 to 2024.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SEHF02",
+      "start": "2021",
+      "end": "2024"
+    },
+    "concept": "get_series:CUUR0000SEHF02"
+  },
+  {
+    "question": "What metadata is there for the services CPI?",
+    "tool": "get_series_info",
+    "arguments": {
+      "series_id": "CUUR0000SAS"
+    },
+    "concept": "get_series_info:CUUR0000SAS"
+  },
+  {
+    "question": "Get the commodities index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAC"
+    },
+    "concept": "get_series:CUUR0000SAC"
+  },
+  {
+    "question": "What are the overall most popular BLS series?",
+    "tool": "popular_series",
+    "arguments": {},
+    "concept": "popular_series:None"
+  },
+  {
+    "question": "Analyze the seasonality of airline fares.",
+    "tool": "analyze_cpi_seasonality",
+    "arguments": {
+      "series_id": "CUUR0000SETG01"
+    },
+    "concept": "analyze_cpi_seasonality:CUUR0000SETG01"
+  },
+  {
+    "question": "Get the tobacco and smoking products index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SEGA"
+    },
+    "concept": "get_series:CUUR0000SEGA"
+  },
+  {
+    "question": "Get the recreation consumer price index.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAR"
+    },
+    "concept": "get_series:CUUR0000SAR"
+  },
+  {
+    "question": "What did food CPI do between 2018 and 2023?",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAF1",
+      "start": "2018",
+      "end": "2023"
+    },
+    "concept": "get_series:CUUR0000SAF1"
   }
 ]

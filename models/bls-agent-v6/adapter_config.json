@@ -1,0 +1,42 @@
+{
+    "adapter_path": "models/bls-agent-v6",
+    "batch_size": 2,
+    "clear_cache_threshold": 0,
+    "config": null,
+    "data": "mlx_data_clean",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 1,
+    "grad_checkpoint": false,
+    "iters": 600,
+    "learning_rate": 5e-05,
+    "lora_parameters": {
+        "rank": 8,
+        "dropout": 0.0,
+        "scale": 20.0
+    },
+    "lr_schedule": null,
+    "mask_prompt": false,
+    "max_seq_length": 2048,
+    "model": "Qwen/Qwen3-1.7B",
+    "num_layers": 16,
+    "optimizer": "adam",
+    "optimizer_config": {
+        "adam": {},
+        "adamw": {},
+        "muon": {},
+        "sgd": {},
+        "adafactor": {}
+    },
+    "project_name": null,
+    "report_to": null,
+    "resume_adapter_file": null,
+    "save_every": 200,
+    "seed": 0,
+    "steps_per_eval": 200,
+    "steps_per_report": 10,
+    "test": false,
+    "test_batches": 500,
+    "train": true,
+    "val_batches": 25,
+    "_note": "adapters.safetensors is checkpoint 0000600, selected on the VAL split. Training ran to 1400; the 1400-iter weights are in 0001400_adapters.safetensors. Do NOT early-stop on val LOSS here: it bottoms at ~iter 250 while task accuracy keeps climbing to ~600. Select checkpoints on val accuracy instead."
+}

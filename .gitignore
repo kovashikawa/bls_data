@@ -218,3 +218,6 @@ uv.lock
 
 # Environments
 .env
+
+# LoRA intermediate checkpoints — keep only the selected adapters.safetensors
+models/*/[0-9]*_adapters.safetensors

@@ -155,23 +155,33 @@ def main():
     p.add_argument("--adapter", default="models/bls-agent-v3")
     p.add_argument("--compare", help="second adapter to score alongside")
     p.add_argument("--base-only", action="store_true")
+    p.add_argument("--no-base", action="store_true",
+                   help="skip the base-model run (for checkpoint sweeps, where it "
+                        "would be re-scored identically for every checkpoint)")
+    p.add_argument("--split", choices=["test", "val"], default="test",
+                   help="which split to score. Use 'val' to CHOOSE a checkpoint; "
+                        "picking one by test accuracy is selection on the test set "
+                        "and inflates the reported number.")
     a = p.parse_args()
 
     from mlx_lm import load
 
-    seed_set = load_seed_set()
-    clean_set = load_jsonl_set()
-    print(f"Eval sets: {len(seed_set)} natural held-out seeds | "
+    seeds_path = "test_seeds.json" if a.split == "test" else "val_seeds.json"
+    rows_path = "test_clean.jsonl" if a.split == "test" else "val_clean.jsonl"
+    seed_set = load_seed_set(seeds_path)
+    clean_set = load_jsonl_set(rows_path)
+    print(f"Eval sets [{a.split}]: {len(seed_set)} natural held-out seeds | "
           f"{len(clean_set)} expanded rows (train-duplicates removed)")
 
     targets = [] if a.base_only else [("fine-tuned " + Path(a.adapter).name, a.adapter)]
     if a.compare:
         targets.append(("fine-tuned " + Path(a.compare).name, a.compare))
-    targets.append(("base Qwen3-1.7B", None))
+    if not a.no_base:
+        targets.append(("base Qwen3-1.7B", None))
 
     for label, adapter in targets:
         model, tok = load(MODEL, adapter_path=adapter) if adapter else load(MODEL)
-        for name, data in [("held-out seeds", seed_set), ("expanded test", clean_set)]:
+        for name, data in [(f"{a.split} seeds", seed_set), (f"{a.split} expanded", clean_set)]:
             qs = [q for q, _, _ in data]
             report(score(run(model, tok, qs), data, f"{label} — {name}"))
 

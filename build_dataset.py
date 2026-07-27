@@ -17,20 +17,41 @@ from seed_dataset import SEED_DATA
 
 random.seed(42)
 
-# ── Step 1: Split seeds BEFORE expansion (fixes data leakage) ──
-# Hold out 15 seeds for testing — these NEVER enter training
-indices = list(range(len(SEED_DATA)))
-random.shuffle(indices)
+# ── Step 1: Split seeds by PHRASING, stratified by concept ──
+# The previous split held out whole seeds, which meant whole *concepts* landed
+# in test: 4 of 11 scored test items asked for a series id that appeared nowhere
+# in training. No model can answer those — "medical care" -> CUUR0000SAM is a
+# lookup, not something derivable. Every concept now contributes at least one
+# phrasing to train; the remaining phrasings are held out. So test measures
+# "does it recall the mapping from wording it hasn't seen", which is the actual
+# deployed task.
+from collections import defaultdict
 
-test_indices = set(indices[:15])      # 15 seeds → test (never seen)
-val_indices = set(indices[15:25])     # 10 seeds → validation
-train_indices = set(indices[25:])     # 45 seeds → training
+_by_concept = defaultdict(list)
+for _seed in SEED_DATA:
+    _by_concept[_seed["concept"]].append(_seed)
 
-test_seeds = [SEED_DATA[i] for i in sorted(test_indices)]
-val_seeds = [SEED_DATA[i] for i in sorted(val_indices)]
-train_seeds = [SEED_DATA[i] for i in sorted(train_indices)]
+train_seeds, _extras = [], []
+for _concept in sorted(_by_concept):
+    _group = list(_by_concept[_concept])
+    random.shuffle(_group)
+    train_seeds.append(_group[0])   # every concept is represented in train
+    _extras.extend(_group[1:])
 
-print(f"Split: {len(train_seeds)} train / {len(val_seeds)} val / {len(test_seeds)} test")
+random.shuffle(_extras)
+_n_val = round(len(SEED_DATA) * 0.14)
+_n_test = round(len(SEED_DATA) * 0.21)
+val_seeds = _extras[:_n_val]
+test_seeds = _extras[_n_val:_n_val + _n_test]
+train_seeds += _extras[_n_val + _n_test:]
+
+print(f"Split: {len(train_seeds)} train / {len(val_seeds)} val / {len(test_seeds)} test "
+      f"({len(_by_concept)} concepts, all present in train)")
+
+_train_concepts = {s["concept"] for s in train_seeds}
+_orphans = {s["concept"] for s in val_seeds + test_seeds} - _train_concepts
+if _orphans:
+    raise SystemExit(f"concepts held out entirely (unanswerable): {sorted(_orphans)}")
 
 # ── Step 2: Expand only training seeds ──
 # Generate variations from the 45 training seeds only
@@ -83,13 +104,11 @@ SEARCH_TERMS = [
     "rent", "mortgage", "utilities", "phone", "cable", "streaming",
     "furniture", "appliances", "clothing", "shoes", "jewelry", "fuel oil",
 ]
-LIST_SURVEYS_VARIANTS = [
-    "What surveys are available from the BLS?",
-    "List all economic data programs at the Bureau of Labor Statistics.",
-    "What BLS data categories exist?",
-    "Show me all BLS survey abbreviations.",
-    "What types of economic data does BLS track?",
-]
+# list_surveys has no arguments, so the only thing that could vary is phrasing —
+# and the phrasings now live in seed_dataset.LIST_SURVEYS, split by concept like
+# everything else. Keeping a second copy here re-introduced exactly the bug this
+# module is meant to prevent: a val seed's expansion collided with a test seed's
+# original. There is nothing left for the expander to add.
 
 
 # ── Step 1b: Partition the expansion pools per split ──
@@ -122,14 +141,12 @@ def _partition(items, salt):
 _SERIES = _partition(VALID_SERIES_IDS, "series")
 _SURVEYS = _partition(VALID_SURVEYS, "surveys")
 _TERMS = _partition(SEARCH_TERMS, "terms")
-_VARIANTS = _partition(LIST_SURVEYS_VARIANTS, "variants")
 
 POOLS = {
     split: {
         "series_ids": _SERIES[split],
         "surveys": _SURVEYS[split],
         "search_terms": _TERMS[split],
-        "list_variants": _VARIANTS[split],
     }
     for split in ("train", "val", "test")
 }
@@ -137,7 +154,7 @@ POOLS = {
 for _s in ("train", "val", "test"):
     _p = POOLS[_s]
     print(f"  pool[{_s:5s}] {len(_p['series_ids'])} ids, {len(_p['surveys'])} surveys, "
-          f"{len(_p['search_terms'])} terms, {len(_p['list_variants'])} phrasings")
+          f"{len(_p['search_terms'])} terms")
 
 # Qwen3 non-thinking system prompt (FIX: suppresses thinking mode)
 SYSTEM_PROMPT = """You are a BLS economic data assistant.
@@ -225,12 +242,8 @@ def expand_seed(seed, target_count_per_seed=6, pool=None):
                 "arguments": {"series_id": sid},
             })
 
-    elif tool == "list_surveys":
-        # list_surveys takes no arguments, so the only thing that can vary is the
-        # phrasing — which makes it the pool most prone to cross-split collision.
-        variants = pool["list_variants"]
-        for q in random.sample(variants, min(3, len(variants))):
-            examples.append({"question": q, "tool": tool, "arguments": {}})
+    # list_surveys: no expansion. Nothing can vary but the wording, and the
+    # wordings are seeds now.
 
     return examples[:target_count_per_seed]
 
@@ -255,10 +268,16 @@ def format_training_example(ex):
 
 
 # ── Step 3: Build datasets ──
-def build_split(seeds, name, split, target=300):
-    """Build a dataset split from seeds, expanding only from `split`'s pools."""
+def build_split(seeds, name, split, target=600, per_seed=2):
+    """Build a dataset split from seeds, expanding only from `split`'s pools.
+
+    per_seed defaults to 2 (the seed itself plus one synthetic variation). It was
+    effectively 6, which made 56% of train "Show me data for series CUUR0000SAF1."
+    style rows that just echo an id already present in the question. Those teach
+    nothing about concept->id, which is the mapping the model actually needs, so
+    the real phrasings now dominate.
+    """
     examples = []
-    per_seed = max(1, target // len(seeds)) if seeds else 1
     for seed in seeds:
         examples.extend(expand_seed(seed, per_seed, pool=POOLS[split]))
     random.shuffle(examples)
@@ -286,9 +305,9 @@ def build_split(seeds, name, split, target=300):
 
 
 print("\nBuilding datasets...")
-train = build_split(train_seeds, "train_clean", "train", target=300)
-val = build_split(val_seeds, "val_clean", "val", target=40)
-test = build_split(test_seeds, "test_clean", "test", target=40)
+train = build_split(train_seeds, "train_clean", "train")
+val = build_split(val_seeds, "val_clean", "val")
+test = build_split(test_seeds, "test_clean", "test")
 
 # ── Step 3b: Assert the split actually holds ──
 _sets = {n: {i["text"] for i in s} for n, s in [("train", train), ("val", val), ("test", test)]}
