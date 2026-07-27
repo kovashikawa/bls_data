@@ -3,7 +3,7 @@
     "question": "What was apparel CPI from 2021 through 2023?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SAA1",
+      "series_id": "CUUR0000SAA",
       "start": "2021",
       "end": "2023"
     }
@@ -28,7 +28,7 @@
     "question": "What's the rent of primary residence CPI since 2020?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SEHA01",
+      "series_id": "CUUR0000SEHA",
       "start": "2020"
     }
   },
@@ -67,7 +67,7 @@
     "question": "What seasonal patterns exist in apparel CPI?",
     "tool": "analyze_cpi_seasonality",
     "arguments": {
-      "series_id": "CUUR0000SAA1"
+      "series_id": "CUUR0000SAA"
     }
   }
 ]

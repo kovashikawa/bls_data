@@ -34,22 +34,22 @@ SEED_DATA = [
     {
         "question": "Show me housing CPI from 2022 to present.",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAH1", "start": "2022"},
+        "arguments": {"series_id": "CUUR0000SAH", "start": "2022"},
     },
     {
         "question": "How much did medical care costs increase since 2020?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAM1", "start": "2020"},
+        "arguments": {"series_id": "CUUR0000SAM", "start": "2020"},
     },
     {
         "question": "Give me the CPI for transportation over the last 2 years.",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAT1", "start": "2023"},
+        "arguments": {"series_id": "CUUR0000SAT", "start": "2023"},
     },
     {
         "question": "What was apparel CPI from 2021 through 2023?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAA1", "start": "2021", "end": "2023"},
+        "arguments": {"series_id": "CUUR0000SAA", "start": "2021", "end": "2023"},
     },
     {
         "question": "Show me the CPI for all items less food and energy for the last 5 years.",
@@ -74,22 +74,22 @@ SEED_DATA = [
     {
         "question": "Show me CPI for education and communication since 2020.",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAE1", "start": "2020"},
+        "arguments": {"series_id": "CUUR0000SAE", "start": "2020"},
     },
     {
         "question": "How have recreation prices changed in the last 3 years?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAR1", "start": "2022"},
+        "arguments": {"series_id": "CUUR0000SAR", "start": "2022"},
     },
     {
         "question": "Give me the commodities CPI from 2021 to 2024.",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAC1", "start": "2021", "end": "2024"},
+        "arguments": {"series_id": "CUUR0000SAC", "start": "2021", "end": "2024"},
     },
     {
         "question": "What was the CPI for services in 2023?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SAS1", "start": "2023", "end": "2023"},
+        "arguments": {"series_id": "CUUR0000SAS", "start": "2023", "end": "2023"},
     },
     {
         "question": "Show me the CPI for food at home for the past 4 years.",
@@ -99,7 +99,7 @@ SEED_DATA = [
     {
         "question": "Get data on food away from home inflation since 2020.",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SEFV01", "start": "2020"},
+        "arguments": {"series_id": "CUUR0000SEFV", "start": "2020"},
     },
     {
         "question": "What's the CPI for new vehicles over the last 3 years?",
@@ -124,7 +124,7 @@ SEED_DATA = [
     {
         "question": "What's the rent of primary residence CPI since 2020?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SEHA01", "start": "2020"},
+        "arguments": {"series_id": "CUUR0000SEHA", "start": "2020"},
     },
     {
         "question": "Show me owners equivalent rent CPI trend.",
@@ -272,7 +272,7 @@ SEED_DATA = [
     {
         "question": "What survey and measure type is CPI for energy?",
         "tool": "get_series_info",
-        "arguments": {"series_id": "CUUR0000SETG01"},
+        "arguments": {"series_id": "CUUR0000SA0E"},
     },
     {
         "question": "Get metadata for the food CPI series.",
@@ -280,9 +280,14 @@ SEED_DATA = [
         "arguments": {"series_id": "CUUR0000SAF1"},
     },
     {
-        "question": "What's the seasonality of the housing CPI series?",
+        # Phrased to name the catalog's `seasonality` field (the SA/NSA flag that
+        # get_series_info returns) rather than seasonal *patterns*, which is what
+        # analyze_cpi_seasonality does. The old wording ("What's the seasonality
+        # of...") was genuinely ambiguous and both v2 and v3 answered it with
+        # analyze_cpi_seasonality — defensibly.
+        "question": "Is the housing CPI series seasonally adjusted?",
         "tool": "get_series_info",
-        "arguments": {"series_id": "CUUR0000SAH1"},
+        "arguments": {"series_id": "CUUR0000SAH"},
     },
     {
         "question": "Get series info for the labor force participation rate.",
@@ -309,12 +314,12 @@ SEED_DATA = [
     {
         "question": "What's the seasonal pattern for energy CPI?",
         "tool": "analyze_cpi_seasonality",
-        "arguments": {"series_id": "CUUR0000SETG01"},
+        "arguments": {"series_id": "CUUR0000SA0E"},
     },
     {
         "question": "Do housing costs have seasonal variation?",
         "tool": "analyze_cpi_seasonality",
-        "arguments": {"series_id": "CUUR0000SAH1"},
+        "arguments": {"series_id": "CUUR0000SAH"},
     },
     {
         "question": "Analyze seasonality in gasoline prices.",
@@ -324,12 +329,12 @@ SEED_DATA = [
     {
         "question": "What seasonal patterns exist in apparel CPI?",
         "tool": "analyze_cpi_seasonality",
-        "arguments": {"series_id": "CUUR0000SAA1"},
+        "arguments": {"series_id": "CUUR0000SAA"},
     },
     {
         "question": "Analyze the seasonal variation in transportation costs.",
         "tool": "analyze_cpi_seasonality",
-        "arguments": {"series_id": "CUUR0000SAT1"},
+        "arguments": {"series_id": "CUUR0000SAT"},
     },
     {
         "question": "Show me the seasonal pattern for food at home.",
@@ -350,7 +355,7 @@ SEED_DATA = [
         "tool": "search_series",
         "arguments": {"query": "rent of primary residence", "limit": 3},
         "next_tool": "get_series",
-        "next_arguments": {"series_id": "CUUR0000SEHA01"},
+        "next_arguments": {"series_id": "CUUR0000SEHA"},
     },
     {
         "question": "List popular CPI series, then get the metadata for the top one.",
@@ -364,7 +369,7 @@ SEED_DATA = [
         "tool": "search_series",
         "arguments": {"query": "medical care", "limit": 5},
         "next_tool": "analyze_cpi_seasonality",
-        "next_arguments": {"series_id": "CUUR0000SAM1"},
+        "next_arguments": {"series_id": "CUUR0000SAM"},
     },
     {
         "question": "Get CPI all items and unemployment rate data for 2024.",

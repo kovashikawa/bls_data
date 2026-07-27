@@ -10,7 +10,7 @@
     "question": "How much did medical care costs increase since 2020?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SAM1",
+      "series_id": "CUUR0000SAM",
       "start": "2020"
     }
   },
@@ -18,7 +18,7 @@
     "question": "Give me the CPI for transportation over the last 2 years.",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SAT1",
+      "series_id": "CUUR0000SAT",
       "start": "2023"
     }
   },
@@ -26,7 +26,7 @@
     "question": "Give me the commodities CPI from 2021 to 2024.",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SAC1",
+      "series_id": "CUUR0000SAC",
       "start": "2021",
       "end": "2024"
     }
@@ -35,7 +35,7 @@
     "question": "What was the CPI for services in 2023?",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SAS1",
+      "series_id": "CUUR0000SAS",
       "start": "2023",
       "end": "2023"
     }
@@ -44,7 +44,7 @@
     "question": "Get data on food away from home inflation since 2020.",
     "tool": "get_series",
     "arguments": {
-      "series_id": "CUUR0000SEFV01",
+      "series_id": "CUUR0000SEFV",
       "start": "2020"
     }
   },
@@ -93,17 +93,17 @@
     }
   },
   {
-    "question": "What's the seasonality of the housing CPI series?",
+    "question": "Is the housing CPI series seasonally adjusted?",
     "tool": "get_series_info",
     "arguments": {
-      "series_id": "CUUR0000SAH1"
+      "series_id": "CUUR0000SAH"
     }
   },
   {
     "question": "Analyze the seasonal variation in transportation costs.",
     "tool": "analyze_cpi_seasonality",
     "arguments": {
-      "series_id": "CUUR0000SAT1"
+      "series_id": "CUUR0000SAT"
     }
   },
   {
