@@ -115,6 +115,29 @@ test — choosing by test accuracy is selection on the set you then report.
 question, teaching nothing about concept→ID. It is capped at 2 per seed so real
 phrasings dominate.
 
+### Not supported: multi-step calls (deliberate)
+
+The model emits exactly one tool call per turn. This is a decision, not an
+oversight: an MCP host already runs the call → result → call loop, so the useful
+contract is "pick the right single call given the conversation so far".
+
+An earlier version had six compound seeds ("search for rent series, **then** get
+data for the first result"). They were removed because they were mislabeled by
+construction — the training target hardcoded `series_id="CUUR0000SEHA01"` as the
+"first result", which the model cannot know without seeing the search output. It
+taught guessing a plausible ID rather than reading one. (They were also inert:
+the formatter only ever emitted the first call, so the second was silently
+discarded.)
+
+Adding real multi-step means one of two things:
+
+- **Independent calls only** — compound questions whose calls are all knowable
+  upfront ("CPI and unemployment for 2024"). Needs an output format for N calls
+  and a set-comparison metric in `score.py`. Tractable.
+- **Dependent steps** — requires actual tool results in the training context,
+  which means capturing live BLS responses and a strategy for truncating large
+  `get_series` payloads. A separate project.
+
 ### Files
 
 | file | role |
@@ -123,7 +146,13 @@ phrasings dominate.
 | `build_dataset.py` | split, expand, validate; writes `*_clean.jsonl` + `mlx_data_clean/` |
 | `train.py` | wrapper over `mlx_lm.lora` + val-accuracy checkpoint selection |
 | `score.py` | tool/entity/exact metrics; `--split {test,val}` |
-| `models/bls-agent-v7/` | selected adapter (`adapter_config.json` records which checkpoint and why) |
+| `models/bls-agent-v7/` | the adapter (`adapter_config.json` records which checkpoint and why) |
+
+`models/` holds only the current adapter. Superseded ones are deleted rather than
+kept — everything is reproducible from the committed pipeline, and the older
+adapters were trained on data with known-wrong labels. Intermediate LoRA
+checkpoints are gitignored; `train.py` selects one and promotes it to
+`adapters.safetensors`.
 
 `train.py` refuses to run if `mlx_data_clean/` is older than `seed_dataset.py` or
 `build_dataset.py` — training on stale data otherwise fails silently.
