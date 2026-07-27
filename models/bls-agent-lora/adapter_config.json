@@ -1,0 +1,41 @@
+{
+    "adapter_path": "/Users/rafaelkovashikawa/Downloads/projects/bls_data/models/bls-agent-lora",
+    "batch_size": 2,
+    "clear_cache_threshold": 0,
+    "config": null,
+    "data": "/Users/rafaelkovashikawa/Downloads/projects/bls_data/mlx_data",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 1,
+    "grad_checkpoint": false,
+    "iters": 500,
+    "learning_rate": 5e-05,
+    "lora_parameters": {
+        "rank": 8,
+        "dropout": 0.0,
+        "scale": 20.0
+    },
+    "lr_schedule": null,
+    "mask_prompt": false,
+    "max_seq_length": 2048,
+    "model": "Qwen/Qwen3-1.7B",
+    "num_layers": 16,
+    "optimizer": "adam",
+    "optimizer_config": {
+        "adam": {},
+        "adamw": {},
+        "muon": {},
+        "sgd": {},
+        "adafactor": {}
+    },
+    "project_name": null,
+    "report_to": null,
+    "resume_adapter_file": null,
+    "save_every": 200,
+    "seed": 0,
+    "steps_per_eval": 200,
+    "steps_per_report": 50,
+    "test": false,
+    "test_batches": 500,
+    "train": true,
+    "val_batches": 25
+}
