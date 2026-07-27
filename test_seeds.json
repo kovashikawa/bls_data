@@ -1,0 +1,120 @@
+[
+  {
+    "question": "What's the current employment level in the US?",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CES0000000001"
+    }
+  },
+  {
+    "question": "How much did medical care costs increase since 2020?",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAM1",
+      "start": "2020"
+    }
+  },
+  {
+    "question": "Give me the CPI for transportation over the last 2 years.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAT1",
+      "start": "2023"
+    }
+  },
+  {
+    "question": "Give me the commodities CPI from 2021 to 2024.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAC1",
+      "start": "2021",
+      "end": "2024"
+    }
+  },
+  {
+    "question": "What was the CPI for services in 2023?",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SAS1",
+      "start": "2023",
+      "end": "2023"
+    }
+  },
+  {
+    "question": "Get data on food away from home inflation since 2020.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SEFV01",
+      "start": "2020"
+    }
+  },
+  {
+    "question": "Show me used cars and trucks CPI since 2021.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SETA02",
+      "start": "2021"
+    }
+  },
+  {
+    "question": "Show me electricity prices CPI for the last 4 years.",
+    "tool": "get_series",
+    "arguments": {
+      "series_id": "CUUR0000SEHF01",
+      "start": "2021"
+    }
+  },
+  {
+    "question": "Find BLS series about airline fares.",
+    "tool": "search_series",
+    "arguments": {
+      "query": "airline"
+    }
+  },
+  {
+    "question": "What CPI series cover prescription drugs?",
+    "tool": "search_series",
+    "arguments": {
+      "query": "prescription"
+    }
+  },
+  {
+    "question": "Find CPI data related to beef and meat prices.",
+    "tool": "search_series",
+    "arguments": {
+      "query": "beef"
+    }
+  },
+  {
+    "question": "Get info on the total nonfarm employment series.",
+    "tool": "get_series_info",
+    "arguments": {
+      "series_id": "CES0000000001"
+    }
+  },
+  {
+    "question": "What's the seasonality of the housing CPI series?",
+    "tool": "get_series_info",
+    "arguments": {
+      "series_id": "CUUR0000SAH1"
+    }
+  },
+  {
+    "question": "Analyze the seasonal variation in transportation costs.",
+    "tool": "analyze_cpi_seasonality",
+    "arguments": {
+      "series_id": "CUUR0000SAT1"
+    }
+  },
+  {
+    "question": "List popular CPI series, then get the metadata for the top one.",
+    "tool": "popular_series",
+    "arguments": {
+      "survey": "CU"
+    },
+    "next_tool": "get_series_info",
+    "next_arguments": {
+      "series_id": "CUUR0000SA0"
+    }
+  }
+]

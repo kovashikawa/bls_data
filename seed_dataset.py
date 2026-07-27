@@ -19,7 +19,7 @@ SEED_DATA = [
     {
         "question": "How have energy prices changed over the last 3 years?",
         "tool": "get_series",
-        "arguments": {"series_id": "CUUR0000SETG01", "start": "2022"},
+        "arguments": {"series_id": "CUUR0000SA0E", "start": "2022"},
     },
     {
         "question": "Get the unemployment rate data from 2019 to 2024.",
