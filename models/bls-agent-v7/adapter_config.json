@@ -1,5 +1,5 @@
 {
-    "adapter_path": "models/bls-agent-v6",
+    "adapter_path": "models/bls-agent-v7",
     "batch_size": 2,
     "clear_cache_threshold": 0,
     "config": null,
@@ -38,5 +38,6 @@
     "test_batches": 500,
     "train": true,
     "val_batches": 25,
-    "_note": "adapters.safetensors is checkpoint 0000600, selected on the VAL split. Training ran to 1400; the 1400-iter weights are in 0001400_adapters.safetensors. Do NOT early-stop on val LOSS here: it bottoms at ~iter 250 while task accuracy keeps climbing to ~600. Select checkpoints on val accuracy instead."
+    "_selected_checkpoint": "0000600_adapters.safetensors",
+    "_selection": "adapters.safetensors is 0000600_adapters.safetensors, chosen by best exact-match on the val split (65.9%). Not chosen on val loss \u2014 val loss bottoms near iter 250 while accuracy keeps improving to ~600. Not chosen on test, which would inflate the reported number."
 }

@@ -309,6 +309,19 @@ train = build_split(train_seeds, "train_clean", "train")
 val = build_split(val_seeds, "val_clean", "val")
 test = build_split(test_seeds, "test_clean", "test")
 
+# ── Step 3a: Write the MLX data directory ──
+# mlx_lm.lora requires a directory holding train.jsonl / valid.jsonl / test.jsonl
+# under those exact names. This used to be a manual `cp` after every rebuild —
+# forget it once and you train on stale data with no error, which is the same
+# class of silent-staleness bug that produced the bogus 93%.
+MLX_DIR = Path("mlx_data_clean")
+MLX_DIR.mkdir(exist_ok=True)
+for _split_name, _rows in [("train", train), ("valid", val), ("test", test)]:
+    with open(MLX_DIR / f"{_split_name}.jsonl", "w") as f:
+        for _item in _rows:
+            f.write(json.dumps(_item) + "\n")
+print(f"  mlx data dir: {MLX_DIR}/{{train,valid,test}}.jsonl")
+
 # ── Step 3b: Assert the split actually holds ──
 _sets = {n: {i["text"] for i in s} for n, s in [("train", train), ("val", val), ("test", test)]}
 for _a, _b in [("test", "train"), ("val", "train"), ("test", "val")]:
