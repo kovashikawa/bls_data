@@ -37,9 +37,33 @@ MODEL = "Qwen/Qwen3-1.7B"
 DATA_DIR = Path("mlx_data_clean")
 SOURCES = [Path("seed_dataset.py"), Path("build_dataset.py")]
 
-# Validated on 205 seeds / 82 concepts -> 237 train rows.
-DEFAULTS = dict(iters=600, batch_size=2, num_layers=16, learning_rate="5e-5",
+# mask_prompt is the single most important setting here. Our data is heavily
+# short-completion — mean 134 prompt tokens vs 19 completion tokens (generation
+# ratio 0.141), and the system prompt is byte-identical in every row. With
+# mask_prompt off, 87.7% of the loss was the model re-predicting that fixed
+# preamble. That is why train loss looked implausibly low (0.04) and why val
+# loss decoupled from task accuracy: ~88% of val loss was measuring preamble
+# reproduction, not tool-call quality. This is a documented failure mode for
+# short-completion SFT (Huerta-Enochian & Ko, EMNLP 2024), not a property of
+# tool calling.
+#
+# num_layers -1 adapts all 28 transformer blocks; 16 left the first 12 frozen.
+DEFAULTS = dict(iters=800, batch_size=2, num_layers=-1, learning_rate="5e-5",
                 save_every=200, steps_per_eval=200, val_batches=25, seed=0)
+
+# rank 16 (was 8) for 82 concepts to memorise; cosine decay with warmup rather
+# than a constant LR, which left the run thrashing at the end.
+def _tuning_config(iters):
+    return {
+        "mask_prompt": True,
+        "lora_parameters": {"rank": 16, "dropout": 0.0, "scale": 20.0},
+        "lr_schedule": {
+            "name": "cosine_decay",
+            "warmup": max(10, iters // 20),      # ~5% warmup
+            "warmup_init": 1e-7,
+            "arguments": [5e-5, iters, 1e-6],    # [init_lr, decay_steps, end_lr]
+        },
+    }
 
 
 def check_data_fresh():
@@ -61,11 +85,17 @@ def check_data_fresh():
 
 
 def train(adapter_path: Path, cfg: dict):
+    # rank / lr_schedule / mask_prompt have no CLI flags, so they go via YAML.
+    import yaml
+    conf_path = adapter_path / "_tuning.yaml"
+    conf_path.write_text(yaml.safe_dump(_tuning_config(cfg["iters"])))
+
     cmd = [
         # `-m mlx_lm.lora` still works but warns it is deprecated.
         sys.executable, "-m", "mlx_lm", "lora",
         "--model", MODEL, "--train", "--data", str(DATA_DIR),
         "--adapter-path", str(adapter_path),
+        "--config", str(conf_path),
         "--iters", str(cfg["iters"]),
         "--batch-size", str(cfg["batch_size"]),
         "--num-layers", str(cfg["num_layers"]),
@@ -133,6 +163,8 @@ def main():
     p = argparse.ArgumentParser(description="Fine-tune the BLS Data Agent (MLX LoRA)")
     p.add_argument("--output", default="models/bls-agent-v7", help="adapter output dir")
     p.add_argument("--iters", type=int, default=DEFAULTS["iters"])
+    p.add_argument("--seed", type=int, default=DEFAULTS["seed"],
+                   help="training seed; run-to-run sd is ~6pp, so compare means over >=3 seeds")
     p.add_argument("--no-select", action="store_true",
                    help="skip the val-accuracy checkpoint sweep, keep final weights")
     a = p.parse_args()
@@ -141,7 +173,7 @@ def main():
     adapter_path = Path(a.output)
     adapter_path.mkdir(parents=True, exist_ok=True)
 
-    cfg = {**DEFAULTS, "iters": a.iters}
+    cfg = {**DEFAULTS, "iters": a.iters, "seed": a.seed}
     train(adapter_path, cfg)
     if not a.no_select:
         select_checkpoint(adapter_path)

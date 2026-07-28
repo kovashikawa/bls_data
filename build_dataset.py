@@ -9,49 +9,52 @@ Usage:
 
 import json
 import random
-import os
+import re
 from pathlib import Path
+from collections import defaultdict
 
 # Load seed data
 from seed_dataset import SEED_DATA
 
-random.seed(42)
 
-# ── Step 1: Split seeds by PHRASING, stratified by concept ──
-# The previous split held out whole seeds, which meant whole *concepts* landed
-# in test: 4 of 11 scored test items asked for a series id that appeared nowhere
-# in training. No model can answer those — "medical care" -> CUUR0000SAM is a
-# lookup, not something derivable. Every concept now contributes at least one
-# phrasing to train; the remaining phrasings are held out. So test measures
-# "does it recall the mapping from wording it hasn't seen", which is the actual
-# deployed task.
-from collections import defaultdict
+def split_seeds():
+    """Split seeds by PHRASING, stratified by concept.
 
-_by_concept = defaultdict(list)
-for _seed in SEED_DATA:
-    _by_concept[_seed["concept"]].append(_seed)
+    The previous split held out whole seeds, which meant whole *concepts* landed
+    in test: 4 of 11 scored test items asked for a series id that appeared
+    nowhere in training. No model can answer those — "medical care" ->
+    CUUR0000SAM is a lookup, not something derivable. Every concept now
+    contributes at least one phrasing to train; the remaining phrasings are held
+    out. So test measures "does it recall the mapping from wording it hasn't
+    seen", which is the actual deployed task.
+    """
+    random.seed(42)
 
-train_seeds, _extras = [], []
-for _concept in sorted(_by_concept):
-    _group = list(_by_concept[_concept])
-    random.shuffle(_group)
-    train_seeds.append(_group[0])   # every concept is represented in train
-    _extras.extend(_group[1:])
+    by_concept = defaultdict(list)
+    for seed in SEED_DATA:
+        by_concept[seed["concept"]].append(seed)
 
-random.shuffle(_extras)
-_n_val = round(len(SEED_DATA) * 0.14)
-_n_test = round(len(SEED_DATA) * 0.21)
-val_seeds = _extras[:_n_val]
-test_seeds = _extras[_n_val:_n_val + _n_test]
-train_seeds += _extras[_n_val + _n_test:]
+    train, extras = [], []
+    for concept in sorted(by_concept):
+        group = list(by_concept[concept])
+        random.shuffle(group)
+        train.append(group[0])   # every concept is represented in train
+        extras.extend(group[1:])
 
-print(f"Split: {len(train_seeds)} train / {len(val_seeds)} val / {len(test_seeds)} test "
-      f"({len(_by_concept)} concepts, all present in train)")
+    random.shuffle(extras)
+    n_val = round(len(SEED_DATA) * 0.14)
+    n_test = round(len(SEED_DATA) * 0.21)
+    val, test = extras[:n_val], extras[n_val:n_val + n_test]
+    train += extras[n_val + n_test:]
 
-_train_concepts = {s["concept"] for s in train_seeds}
-_orphans = {s["concept"] for s in val_seeds + test_seeds} - _train_concepts
-if _orphans:
-    raise SystemExit(f"concepts held out entirely (unanswerable): {sorted(_orphans)}")
+    orphans = {s["concept"] for s in val + test} - {s["concept"] for s in train}
+    if orphans:
+        raise SystemExit(f"concepts held out entirely (unanswerable): {sorted(orphans)}")
+
+    print(f"Split: {len(train)} train / {len(val)} val / {len(test)} test "
+          f"({len(by_concept)} concepts, all present in train)")
+    return train, val, test
+
 
 # ── Step 2: Expand only training seeds ──
 # Generate variations from the 45 training seeds only
@@ -95,7 +98,6 @@ def _assert_ids_exist():
     print(f"✓ {len(seed_ids)} seed ids + {len(VALID_SERIES_IDS)} pool ids validated against catalog")
 
 
-_assert_ids_exist()
 VALID_SURVEYS = ["CU", "CE", "LN", "PC", "PR", "JT", "LE", "EN", "OE", "SM", "LA"]
 SEARCH_TERMS = [
     "dairy", "airline", "prescription", "tuition", "beef", "alcoholic beverages",
@@ -151,10 +153,13 @@ POOLS = {
     for split in ("train", "val", "test")
 }
 
-for _s in ("train", "val", "test"):
-    _p = POOLS[_s]
-    print(f"  pool[{_s:5s}] {len(_p['series_ids'])} ids, {len(_p['surveys'])} surveys, "
-          f"{len(_p['search_terms'])} terms")
+
+
+def _print_pools():
+    for s in ("train", "val", "test"):
+        p = POOLS[s]
+        print(f"  pool[{s:5s}] {len(p['series_ids'])} ids, {len(p['surveys'])} surveys, "
+              f"{len(p['search_terms'])} terms")
 
 # Qwen3 non-thinking system prompt (FIX: suppresses thinking mode)
 SYSTEM_PROMPT = """You are a BLS economic data assistant.
@@ -181,18 +186,58 @@ def expand_seed(seed, target_count_per_seed=6, pool=None):
     args = dict(seed["arguments"])
 
     if tool == "get_series":
-        years = [("2018", "2022"), ("2019", "2023"), ("2020", "2025"),
-                 ("2021", "2024"), ("2022", "2025")]
-        for start, end in random.sample(years, min(3, len(years))):
-            if start >= end:
-                continue
-            new_args = {**args, "start": start, "end": end}
-            new_q = seed["question"].replace(
-                args.get("start", "2020"), start
-            ).replace(args.get("end", "2024"), end)
-            examples.append({"question": new_q, "tool": tool, "arguments": new_args})
+        # Only rewrite years the question actually names.
+        #
+        # This used to do question.replace(args.get("start", "2020"), start) and
+        # then write start/end into the arguments regardless. When the question
+        # named no years the replace was a no-op but the arguments still gained
+        # dates, producing labels that contradict their own question:
+        #   "Pull the all-items consumer price index." -> start=2022, end=2025
+        # and open-ended questions gained an end they never asked for:
+        #   "Show me services inflation since 2020." -> start=2020, end=2025
+        # That taught the model to invent ranges and then penalised it at eval
+        # for doing so — 12 of 17 expanded-test failures were the model giving
+        # the *more faithful* answer than the label.
+        question = seed["question"]
+        seed_start, seed_end = args.get("start"), args.get("end")
+        vary_start = bool(seed_start) and seed_start in question
+        vary_end = bool(seed_end) and seed_end in question
 
-        # Variations with different but related series IDs
+        if vary_start and vary_end and seed_start == seed_end:
+            # Single-year question ("...in 2023?"). Keep it a single year.
+            for year in random.sample(["2019", "2020", "2021", "2022", "2023"], 3):
+                if year == seed_start:
+                    continue
+                examples.append({
+                    "question": question.replace(seed_start, year),
+                    "tool": tool,
+                    "arguments": {**args, "start": year, "end": year},
+                })
+        elif vary_start and vary_end:
+            ranges = [("2018", "2022"), ("2019", "2023"), ("2020", "2025"),
+                      ("2021", "2024"), ("2022", "2025")]
+            for start, end in random.sample(ranges, min(3, len(ranges))):
+                new_q = question.replace(seed_start, start).replace(seed_end, end)
+                if new_q == question:
+                    continue
+                examples.append({"question": new_q, "tool": tool,
+                                 "arguments": {**args, "start": start, "end": end}})
+        elif vary_start:
+            # Open-ended ("since 2021"). Vary the start; never invent an end.
+            for start in random.sample(["2018", "2019", "2020", "2021", "2022"], 3):
+                if start == seed_start:
+                    continue
+                examples.append({
+                    "question": question.replace(seed_start, start),
+                    "tool": tool,
+                    "arguments": {**args, "start": start},
+                })
+        # else: the question names no years — leave it alone rather than
+        # attaching a range it never mentioned.
+
+        # Variations with different but related series IDs. The generated
+        # question names no dates, so the arguments must not carry the parent
+        # seed's start/end either.
         current_sid = args.get("series_id", "")
         related = [s for s in valid_series_ids
                    if s.startswith(current_sid[:2]) and s != current_sid]
@@ -200,7 +245,7 @@ def expand_seed(seed, target_count_per_seed=6, pool=None):
             examples.append({
                 "question": f"Show me data for series {sid}.",
                 "tool": tool,
-                "arguments": {**args, "series_id": sid},
+                "arguments": {"series_id": sid},
             })
 
     elif tool == "popular_series":
@@ -248,23 +293,42 @@ def expand_seed(seed, target_count_per_seed=6, pool=None):
     return examples[:target_count_per_seed]
 
 
-def format_training_example(ex):
-    """Format a seed example as a ChatML training string with /no_think."""
-    user_msg = ex["question"]
-    tool = ex["tool"]
-    args = ex["arguments"]
+def render_call(ex):
+    """Render a seed example's tool call, e.g. get_series(series_id="X")."""
     args_str = ", ".join(f'{k}="{v}"' if isinstance(v, str) else f"{k}={v}"
-                         for k, v in args.items())
-    assistant_msg = f"{tool}({args_str})"
+                         for k, v in ex["arguments"].items())
+    return f'{ex["tool"]}({args_str})'
 
+
+def format_training_example(ex):
+    """Emit chat-format rows so mlx_lm can mask the prompt.
+
+    This used to hand-roll a ChatML string under a "text" key. Three problems,
+    all fixed by letting the tokenizer's own template do it:
+
+    1. mlx_lm cannot mask the prompt on a "text" dataset — it has no way to tell
+       prompt from completion. Our data is heavily short-completion (134 prompt
+       tokens vs 19 completion), so 87.7% of the loss was the model re-predicting
+       a system prompt that is identical in every row.
+    2. The hand-rolled string omitted Qwen3's empty `<think></think>` block,
+       which is the actual mechanism for non-thinking mode. The system prompt
+       asked for no reasoning in English instead, which is not the same thing.
+    3. It emitted a stray leading space before the call ("assistant\\n get_series"),
+       a different token than the un-spaced form any chat-template path produces.
+    """
     return {
-        "text": (
-            f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-            f"<|im_start|>user\n{user_msg}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-            f" {assistant_msg}<|im_end|>"
-        )
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": ex["question"]},
+            {"role": "assistant", "content": render_call(ex)},
+        ]
     }
+
+
+def example_key(item):
+    """Dedup/overlap key: the (question, call) pair this row teaches."""
+    m = item["messages"]
+    return (m[1]["content"], m[2]["content"])
 
 
 # ── Step 3: Build datasets ──
@@ -289,9 +353,9 @@ def build_split(seeds, name, split, target=600, per_seed=2):
     formatted, seen = [], set()
     for ex in examples:
         item = format_training_example(ex)
-        if item["text"] in seen:
+        if (k := example_key(item)) in seen:
             continue
-        seen.add(item["text"])
+        seen.add(k)
         formatted.append(item)
         if len(formatted) == target:
             break
@@ -304,39 +368,66 @@ def build_split(seeds, name, split, target=600, per_seed=2):
     return formatted
 
 
-print("\nBuilding datasets...")
-train = build_split(train_seeds, "train_clean", "train")
-val = build_split(val_seeds, "val_clean", "val")
-test = build_split(test_seeds, "test_clean", "test")
-
-# ── Step 3a: Write the MLX data directory ──
-# mlx_lm.lora requires a directory holding train.jsonl / valid.jsonl / test.jsonl
-# under those exact names. This used to be a manual `cp` after every rebuild —
-# forget it once and you train on stale data with no error, which is the same
-# class of silent-staleness bug that produced the bogus 93%.
 MLX_DIR = Path("mlx_data_clean")
-MLX_DIR.mkdir(exist_ok=True)
-for _split_name, _rows in [("train", train), ("valid", val), ("test", test)]:
-    with open(MLX_DIR / f"{_split_name}.jsonl", "w") as f:
-        for _item in _rows:
-            f.write(json.dumps(_item) + "\n")
-print(f"  mlx data dir: {MLX_DIR}/{{train,valid,test}}.jsonl")
 
-# ── Step 3b: Assert the split actually holds ──
-_sets = {n: {i["text"] for i in s} for n, s in [("train", train), ("val", val), ("test", test)]}
-for _a, _b in [("test", "train"), ("val", "train"), ("test", "val")]:
-    if overlap := _sets[_a] & _sets[_b]:
-        raise SystemExit(f"{len(overlap)} rows shared between {_a} and {_b}:\n  " +
-                         "\n  ".join(sorted(overlap)[:3]))
-print("✓ verified: no example appears in more than one split")
 
-# ── Step 4: Save raw seed splits for evaluation ──
-for name, seeds in [("test_seeds", test_seeds), ("val_seeds", val_seeds)]:
-    with open(f"{name}.json", "w") as f:
-        json.dump(seeds, f, indent=2)
-    print(f"  {name}: {len(seeds)} seeds → {name}.json")
+def main():
+    """Build every artifact. Kept out of module scope so that `import
+    build_dataset` is free of side effects — importing it used to run the entire
+    build, which is why score.py had to recover SYSTEM_PROMPT by parsing a
+    training file instead of just importing it."""
+    train_seeds, val_seeds, test_seeds = split_seeds()
+    _assert_ids_exist()
+    _print_pools()
 
-print(f"\n✓ Dataset built. Training: {len(train)}, Val: {len(val)}, Test: {len(test)}")
-print(f"✓ Test SEEDS never appear in training data (seed-lineage split)")
-print(f"✓ Expansion POOLS are partitioned per split, so no expanded example can")
-print(f"  be shared either — asserted above, not just intended.")
+    print("\nBuilding datasets...")
+    train = build_split(train_seeds, "train_clean", "train")
+    val = build_split(val_seeds, "val_clean", "val")
+    test = build_split(test_seeds, "test_clean", "test")
+
+    # ── Write the MLX data directory ──
+    # mlx_lm.lora requires a directory holding train.jsonl / valid.jsonl /
+    # test.jsonl under those exact names. This used to be a manual `cp` after
+    # every rebuild — forget it once and you train on stale data with no error,
+    # the same silent-staleness class of bug that produced the bogus 93%.
+    MLX_DIR.mkdir(exist_ok=True)
+    for split_name, rows in [("train", train), ("valid", val), ("test", test)]:
+        with open(MLX_DIR / f"{split_name}.jsonl", "w") as f:
+            for item in rows:
+                f.write(json.dumps(item) + "\n")
+    print(f"  mlx data dir: {MLX_DIR}/{{train,valid,test}}.jsonl")
+
+    # ── Assert the split actually holds ──
+    sets = {n: {example_key(i) for i in s}
+            for n, s in [("train", train), ("val", val), ("test", test)]}
+    for a, b in [("test", "train"), ("val", "train"), ("test", "val")]:
+        if overlap := sets[a] & sets[b]:
+            raise SystemExit(f"{len(overlap)} rows shared between {a} and {b}:\n  " +
+                             "\n  ".join(str(o) for o in sorted(overlap)[:3]))
+    print("✓ verified: no example appears in more than one split")
+
+    # ── Assert no label contradicts its own question ──
+    # The expander used to attach date ranges to questions that named no years.
+    bad = [(q, c) for q, c in sets["train"] | sets["val"] | sets["test"]
+           if c.startswith("get_series(")
+           and re.search(r"(?:19|20)\d\d", c)
+           and not re.search(r"(?:19|20)\d\d", q)]
+    if bad:
+        raise SystemExit(f"{len(bad)} rows carry dates their question never mentions:\n  "
+                         + "\n  ".join(str(b) for b in sorted(bad)[:3]))
+    print("✓ verified: no label carries dates absent from its question")
+
+    # ── Save raw seed splits for evaluation ──
+    for name, seeds in [("test_seeds", test_seeds), ("val_seeds", val_seeds)]:
+        with open(f"{name}.json", "w") as f:
+            json.dump(seeds, f, indent=2)
+        print(f"  {name}: {len(seeds)} seeds → {name}.json")
+
+    print(f"\n✓ Dataset built. Training: {len(train)}, Val: {len(val)}, Test: {len(test)}")
+    print(f"✓ Test SEEDS never appear in training data (seed-lineage split)")
+    print(f"✓ Expansion POOLS are partitioned per split, so no expanded example can")
+    print(f"  be shared either — asserted above, not just intended.")
+
+
+if __name__ == "__main__":
+    main()

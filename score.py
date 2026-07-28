@@ -25,15 +25,11 @@ from pathlib import Path
 
 MODEL = "Qwen/Qwen3-1.7B"
 
-# Recovered from the training file itself rather than imported from
-# build_dataset (which runs the whole build at module import). This guarantees
-# the eval prompt is byte-identical to what the adapter was trained on.
-def _system_prompt(path="train_clean.jsonl"):
-    first = json.loads(open(path).readline())["text"]
-    return first.split("<|im_start|>system\n")[1].split("<|im_end|>")[0]
-
-
-SYSTEM_PROMPT = _system_prompt()
+# Imported directly now that build_dataset's build runs under a __main__ guard.
+# This previously had to parse the prompt back out of train_clean.jsonl, because
+# importing build_dataset executed the entire build — which also made score.py
+# fail at import time if that file happened not to exist yet.
+from build_dataset import SYSTEM_PROMPT
 
 
 def parse_call(text: str) -> tuple[str, dict] | None:
@@ -68,19 +64,40 @@ def load_seed_set(path="test_seeds.json"):
     return [(s["question"], s["tool"], s["arguments"]) for s in json.load(open(path))]
 
 
+def _qa(row):
+    """(question, gold call) from a chat-format row."""
+    m = row["messages"]
+    return m[1]["content"], m[2]["content"]
+
+
 def load_jsonl_set(path="test_clean.jsonl", exclude_train_dupes=True):
-    rows = [json.loads(l)["text"] for l in open(path)]
+    rows = [_qa(json.loads(l)) for l in open(path)]
     if exclude_train_dupes:
-        train = {json.loads(l)["text"] for l in open("train_clean.jsonl")}
+        train = {_qa(json.loads(l)) for l in open("train_clean.jsonl")}
         rows = [r for r in rows if r not in train]
     out = []
-    for t in rows:
-        q = t.split("user\n")[1].split("<|im_end|>")[0]
-        gold = t.split("assistant\n")[1].strip().replace("<|im_end|>", "")
-        parsed = parse_call(gold)
-        if parsed:
+    for q, gold in rows:
+        if parsed := parse_call(gold):
             out.append((q, parsed[0], parsed[1]))
     return out
+
+
+def build_prompt(tokenizer, question):
+    """Build the inference prompt with the tokenizer's own chat template.
+
+    Must match training byte-for-byte. Training rows are chat-format, so mlx_lm
+    renders them with this same template — which for Qwen3 appends an empty
+    `<think></think>` block to the assistant turn. enable_thinking=False
+    reproduces that, so generation starts exactly where the training target did.
+    """
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": question}]
+    try:
+        return tokenizer.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+    except TypeError:  # tokenizer without the Qwen3 thinking switch
+        return tokenizer.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=True)
 
 
 def run(model, tokenizer, questions, max_tokens=64):
@@ -88,15 +105,11 @@ def run(model, tokenizer, questions, max_tokens=64):
     from mlx_lm.sample_utils import make_sampler
 
     sampler = make_sampler(temp=0.0)
-    outs = []
-    for q in questions:
-        prompt = (
-            f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-            f"<|im_start|>user\n{q}<|im_end|>\n<|im_start|>assistant\n"
-        )
-        outs.append(generate(model, tokenizer, prompt=prompt,
-                             max_tokens=max_tokens, sampler=sampler, verbose=False))
-    return outs
+    return [
+        generate(model, tokenizer, prompt=build_prompt(tokenizer, q),
+                 max_tokens=max_tokens, sampler=sampler, verbose=False)
+        for q in questions
+    ]
 
 
 KEY_ARG = {"get_series": "series_id", "get_series_info": "series_id",
