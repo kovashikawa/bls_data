@@ -62,7 +62,7 @@ MCP tool call. Runs on Apple Silicon via MLX.
 ```bash
 python build_dataset.py                       # seeds -> splits + mlx_data_clean/
 python train.py                               # train + select checkpoint on val
-python score.py --adapter models/bls-agent-v7 # report held-out accuracy
+python score.py --adapter models/bls-agent-v10 # report held-out accuracy
 ```
 
 ### Results
@@ -128,8 +128,8 @@ it's a documented short-completion SFT failure mode (Huerta-Enochian & Ko, EMNLP
 little and is robust either way. It selects on val, not test — choosing by test
 accuracy is selection on the set you then report.
 
-**Report distributions, not runs.** Run-to-run sd is ~3pp after the config fix
-(~6pp before). A 14-point spread across seeds previously led to diagnosing a
+**Report distributions, not runs.** Run-to-run sd is ~1.3pp now; it was ~3pp
+before item-name targets and ~6pp before prompt masking. A 14-point spread across seeds previously led to diagnosing a
 14-point "regression" from a change that was actually correct. `train.py --seed`
 exists for this; use ≥3.
 
@@ -171,10 +171,6 @@ would fix both. It is deliberately **not** added: those two are known only from
 inspecting test failures, so adding them would be fitting the test set.
 
 ### Where this should go
-
-The model memorizes 35 series IDs. The catalog is not really 8,103 series — it is
-**400 distinct items repeated across ~20 area/seasonality combinations**, and
-restricted to US-city-average NSA the item name is a unique key.
 
 Measured on the same 43 held-out questions, retrieving over those 400 item names:
 
@@ -235,7 +231,7 @@ Adding real multi-step means one of two things:
 | `build_dataset.py` | split, expand, validate; writes `*_clean.jsonl` + `mlx_data_clean/` |
 | `train.py` | wrapper over `mlx_lm.lora` + val-accuracy checkpoint selection |
 | `score.py` | tool/entity/exact metrics; `--split {test,val}` |
-| `models/bls-agent-v7/` | the adapter (`adapter_config.json` records which checkpoint and why) |
+| `models/bls-agent-v10/` | the adapter (`adapter_config.json` records which checkpoint and why) |
 
 `models/` holds only the current adapter. Superseded ones are deleted rather than
 kept — everything is reproducible from the committed pipeline, and the older
