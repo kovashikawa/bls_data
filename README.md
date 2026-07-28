@@ -182,17 +182,28 @@ Measured on the same 43 held-out questions, retrieving over those 400 item names
 | oracle (gold item name) | 100% | 100% |
 | raw user question, no model | **84.4%** | 93.8% |
 | base Qwen3-1.7B rewrites it | 75.0% | 84.4% |
-| the *old* ID-emitting adapter rewrites it | 62.5% | 71.9% |
+| old ID-emitting adapter rewrites it | 62.5% | 71.9% |
+| current item-name adapter rewrites it | 84.4% | 90.6% |
 
-Two conclusions held at the time. The retriever has no ceiling problem, and a
-zero-model baseline nearly matched the then-current fine-tune. But every model in
-the chain made retrieval *worse* — the ID-emitting adapter had specialized so far
-into codes that, asked for a search phrase, it emitted `CUUR0000SEEB`.
+The retriever has no ceiling problem — given a good query it is perfect. But **no
+model in the chain beats simply passing the user's question through.** The
+current adapter ties on recall@1 and is *worse* on recall@5.
 
-**That last row is now stale, and probably pessimistic.** It measured the adapter
-that emitted series IDs. The current one emits item names, which *are* catalogue
-vocabulary — so its query formulation is likely far better. Untested; worth
-re-running before assuming retrieval is hard.
+The reason is format lock-in, and it survived the switch to item names. Asked for
+a search phrase, the adapter emits tool calls, because tool calls are all it has
+ever been trained to produce:
+
+    "Show me hospital services CPI since 2021."  ->  get_hospital_services_cpi(2021)
+    "What did housing costs do..."               ->  get_housing_cost(2019, 2024)
+    "...details of the food index?"              ->  catfood()
+
+It scores 84.4% only because BM25 tokenises `get_housing_cost` into
+`get`/`housing`/`cost` and the content words survive. That is the retriever being
+robust to noise, not the model writing queries — `catfood()` is the counterexample
+that tokenises to nothing useful.
+
+So retrieval still cannot be bolted on by prompting. It needs training on traces
+that contain the search step.
 
 Next steps, in order:
 
