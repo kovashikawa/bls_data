@@ -70,17 +70,21 @@ python score.py --adapter models/bls-agent-v7 # report held-out accuracy
 Measured on 43 held-out *phrasings* — wordings absent from training, though every
 concept they reference is present (see "How the split works").
 
+Mean over **5 training seeds** ± one sd across seeds. Single-run numbers are not
+meaningful here — see "Report distributions" below.
+
 | | tool | entity | exact |
 |---|---|---|---|
-| fine-tuned (600 iters) | 100% | 93.0% | 90.7% |
+| fine-tuned (800 iters, 5-seed mean) | 99.1% ±1.3 | 89.8% ±2.1 | **88.8% ±3.0** |
 | base Qwen3-1.7B | 72.1% | 9.3% | 9.3% |
+| BM25 over 400 item names, *no model* | — | — | 84.4% |
 
 - **tool** — correct tool chosen (6-way). The easy part.
 - **entity** — tool + the load-bearing argument (`series_id`/`query`/`survey`), ignoring dates.
 - **exact** — every argument identical; spurious `start`/`end` count as wrong.
 
-Read the headline as roughly **86–91%**: binomial se at n=43 is ±4.5pt, and
-run-to-run variance is ~5pt (an identically-configured rerun scored 86.0%).
+The third row is the baseline this project has to justify itself against, and
+currently barely does. See "Where this should go".
 
 ### How the split works
 
@@ -96,24 +100,69 @@ Earlier versions held out whole seeds, which put whole concepts in test — 4 of
 scored items asked for a series ID that appeared nowhere in training and were
 unanswerable by construction.
 
-### Two non-obvious findings
+### Non-obvious findings
 
-**Do not early-stop on val loss.** It bottoms near iter 250 and rises, while task
-accuracy keeps climbing to ~600. Stopping at the val-loss minimum costs ~50 points
-of exact match:
+**Mask the prompt.** This data is heavily short-completion: mean 134 prompt tokens
+vs 19 completion tokens (generation ratio 0.141), with an identical system prompt
+in every row. With `mask_prompt: false`, **87.7% of the loss was the model
+re-predicting a fixed preamble** — which is why train loss looked implausibly low
+and why val loss appeared to decouple from accuracy:
 
-| iter | 200 | 400 | **600** | 800 | 1000 | 1200 | 1400 |
-|---|---|---|---|---|---|---|---|
-| val loss | .135 | .135 | .147 | .156 | .169 | .168 | .169 |
-| exact | 37.2% | 65.1% | **90.7%** | 81.4% | 88.4% | 83.7% | 74.4% |
+| | unmasked | masked |
+|---|---|---|
+| pick checkpoint by val-loss minimum | 37.2% | 86.8% |
+| best checkpoint available | 90.7% | 88.4% |
+| **penalty for trusting val loss** | **~50pt** | **1.6pt** |
 
-`train.py` therefore selects checkpoints on val **accuracy**. It selects on val, not
-test — choosing by test accuracy is selection on the set you then report.
+An earlier version of this README claimed "do not early-stop on val loss" as a
+property of structured-output tasks. That was wrong — it was this config bug, and
+it's a documented short-completion SFT failure mode (Huerta-Enochian & Ko, EMNLP
+2024). Once the loss measures the completion, standard practice works.
+
+`train.py` still selects on val **accuracy** rather than val loss, which costs
+little and is robust either way. It selects on val, not test — choosing by test
+accuracy is selection on the set you then report.
+
+**Report distributions, not runs.** Run-to-run sd is ~3pp after the config fix
+(~6pp before). A 14-point spread across seeds previously led to diagnosing a
+14-point "regression" from a change that was actually correct. `train.py --seed`
+exists for this; use ≥3.
+
+**Score on a quiet machine.** Evaluating concurrently with a training job on the
+same GPU returns *different numbers for identical weights*. Two isolated runs are
+byte-identical; under Metal memory pressure results silently change.
 
 **Expansion has sharply diminishing returns.** The synthetic expander mostly emits
 `"Show me data for series CUUR0000SAF1."` rows that echo an ID already present in the
 question, teaching nothing about concept→ID. It is capped at 2 per seed so real
 phrasings dominate.
+
+### Where this should go
+
+The model memorizes 35 series IDs. The catalog is not really 8,103 series — it is
+**400 distinct items repeated across ~20 area/seasonality combinations**, and
+restricted to US-city-average NSA the item name is a unique key.
+
+Measured on the same 43 held-out questions, retrieving over those 400 item names:
+
+| query source | recall@1 | recall@5 |
+|---|---|---|
+| oracle (gold item name) | 100% | 100% |
+| raw user question, no model | **84.4%** | 93.8% |
+| base Qwen3-1.7B rewrites it | 75.0% | 84.4% |
+| this fine-tuned model rewrites it | 62.5% | 71.9% |
+
+Two conclusions. The retriever has no ceiling problem, and a zero-model BM25
+baseline nearly matches the fine-tune. But every model in the chain currently
+makes retrieval *worse* — this adapter emits series IDs when asked for a search
+phrase, having specialized away its ability to paraphrase. So retrieval cannot be
+bolted on; it needs training from base on two-step traces.
+
+Next steps, in order: replace `search_series` (today a substring match with no
+ranking) with BM25 scoped to one area/seasonality; retrain from base on
+question → search → select traces; and judge the result against **both** 84.4%
+(no model) and 88.8% (this model). If it clears neither, ship the BM25 index and
+drop the adapter.
 
 ### Not supported: multi-step calls (deliberate)
 
