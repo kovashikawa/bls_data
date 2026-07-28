@@ -61,7 +61,23 @@ def parse_call(text: str) -> tuple[str, dict] | None:
 
 
 def load_seed_set(path="test_seeds.json"):
-    return [(s["question"], s["tool"], s["arguments"]) for s in json.load(open(path))]
+    """Load natural held-out seeds as (question, tool, args).
+
+    Gold is rendered through build_dataset.render_call — the SAME function that
+    builds the training targets — rather than read straight off the seed dict.
+    The seed files store raw `series_id`, but targets name the item, so reading
+    the dict directly compared `item="Hospital and related services"` against
+    `series_id="CUUR0000SEMD"` and scored every correct answer as wrong. Deriving
+    gold from the renderer means the eval format cannot drift from training.
+    """
+    from build_dataset import render_call
+
+    out = []
+    for s in json.load(open(path)):
+        parsed = parse_call(render_call(s))
+        if parsed:
+            out.append((s["question"], parsed[0], parsed[1]))
+    return out
 
 
 def _qa(row):
@@ -112,9 +128,25 @@ def run(model, tokenizer, questions, max_tokens=64):
     ]
 
 
-KEY_ARG = {"get_series": "series_id", "get_series_info": "series_id",
-           "analyze_cpi_seasonality": "series_id", "search_series": "query",
+KEY_ARG = {"get_series": "item", "get_series_info": "item",
+           "analyze_cpi_seasonality": "item", "search_series": "query",
            "popular_series": "survey", "list_surveys": None}
+
+
+def _canon(key, value):
+    """Compare on the resolved series, not the literal string.
+
+    Targets name the item ("Food at home") rather than the id. What matters is
+    whether the right series gets fetched, so an item that resolves correctly is
+    correct even if cased or punctuated differently. Unresolvable names fall back
+    to the raw string, so a hallucinated item still counts as wrong.
+    """
+    if key != "item":
+        return str(value)
+    import sys
+    sys.path.insert(0, "src")
+    from bls_data.items import resolve_item
+    return resolve_item(str(value)) or f"UNRESOLVED:{value}"
 
 
 def score(outputs, gold, label):
@@ -136,8 +168,9 @@ def score(outputs, gold, label):
         pt, pa = parsed
         t_ok = pt == gt_tool
         k = KEY_ARG.get(gt_tool)
-        e_ok = t_ok and (k is None or str(pa.get(k)) == str(gt_args.get(k)))
-        a_ok = t_ok and {k2: str(v) for k2, v in pa.items()} == {k2: str(v) for k2, v in gt_args.items()}
+        e_ok = t_ok and (k is None or _canon(k, pa.get(k)) == _canon(k, gt_args.get(k)))
+        a_ok = t_ok and ({k2: _canon(k2, v) for k2, v in pa.items()}
+                         == {k2: _canon(k2, v) for k2, v in gt_args.items()})
         tool_ok += t_ok
         entity_ok += e_ok
         exact += a_ok

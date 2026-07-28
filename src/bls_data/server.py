@@ -11,6 +11,7 @@ from fastmcp import FastMCP
 from bls_data.client import BLSClient
 from bls_data.parser import parse_results_to_df
 from bls_data.mapping import load_mapping, resolve_series_ids
+from bls_data.items import resolve_item
 
 mcp = FastMCP("bls-data-server")
 _client: Optional[BLSClient] = None
@@ -23,16 +24,38 @@ def _get_client() -> BLSClient:
     return _client
 
 
+def _series(series_id: Optional[str] = None, item: Optional[str] = None):
+    """Accept either a raw series id or a human-readable item name.
+
+    `item` exists because callers — including small models — are far more
+    reliable at "Food at home" than at CUUR0000SAF11, where a one-character slip
+    silently fetches a sibling series. Returns (series_id, error).
+    """
+    if series_id:
+        return series_id, None
+    if not item:
+        return None, {"error": "provide either series_id or item"}
+    if resolved := resolve_item(item):
+        return resolved, None
+    return None, {"error": f"could not resolve item {item!r} to a series. "
+                          "Use search_series() to find the official item name."}
+
+
 @mcp.tool()
-def get_series(series_id: str, start: Optional[str] = None, end: Optional[str] = None) -> dict:
-    """Fetch a BLS data series by ID with optional date range.
+def get_series(item: Optional[str] = None, start: Optional[str] = None,
+               end: Optional[str] = None, series_id: Optional[str] = None) -> dict:
+    """Fetch a BLS data series with an optional date range.
 
     Args:
-        series_id: BLS series ID (e.g. 'CUUR0000SA0' for CPI All Items)
+        item: Official BLS item name, e.g. 'Food at home', 'Medical care'
         start: Start year (e.g. '2020')
         end: End year (e.g. '2024')
+        series_id: Raw series ID, if you already have one (e.g. 'CUUR0000SA0')
     """
     try:
+        series_id, err = _series(series_id, item)
+        if err:
+            return err
         client = _get_client()
         data = client.fetch(
             [series_id],
@@ -53,13 +76,17 @@ def get_series(series_id: str, start: Optional[str] = None, end: Optional[str] =
 
 
 @mcp.tool()
-def get_series_info(series_id: str) -> dict:
+def get_series_info(item: Optional[str] = None, series_id: Optional[str] = None) -> dict:
     """Get catalog metadata for a BLS series.
 
     Args:
-        series_id: BLS series ID
+        item: Official BLS item name, e.g. 'Food at home'
+        series_id: Raw series ID, if you already have one
     """
     try:
+        series_id, err = _series(series_id, item)
+        if err:
+            return err
         client = _get_client()
         data = client.fetch([series_id], catalog=True)
         series_list = data.get("Results", {}).get("series", [])
@@ -151,18 +178,23 @@ def popular_series(survey: Optional[str] = None) -> dict:
 
 @mcp.tool()
 def analyze_cpi_seasonality(
-    series_id: str,
+    item: Optional[str] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    series_id: Optional[str] = None,
 ) -> dict:
     """Analyze CPI seasonality with percentile bands and current year comparison.
 
     Args:
-        series_id: BLS series ID
+        item: Official BLS item name, e.g. 'Gasoline (all types)'
         start: Start year (default: 10 years ago)
         end: End year (default: current year)
+        series_id: Raw series ID, if you already have one
     """
     try:
+        series_id, err = _series(series_id, item)
+        if err:
+            return err
         import matplotlib.pyplot as plt
 
         start_year = int(start) if start else datetime.now().year - 10

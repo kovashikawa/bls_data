@@ -16,6 +16,10 @@ from collections import defaultdict
 # Load seed data
 from seed_dataset import SEED_DATA
 
+import sys as _sys
+_sys.path.insert(0, "src")
+from bls_data.items import canonical_names
+
 
 def split_seeds():
     """Split seeds by PHRASING, stratified by concept.
@@ -164,12 +168,13 @@ def _print_pools():
 # Qwen3 non-thinking system prompt (FIX: suppresses thinking mode)
 SYSTEM_PROMPT = """You are a BLS economic data assistant.
 Available tools:
-- get_series(series_id, start?, end?) — Fetch time-series data
+- get_series(item, start?, end?) — Fetch time-series data
 - list_surveys() — List all BLS surveys
 - popular_series(survey?) — Popular series for a survey
 - search_series(query, limit?) — Search CPI catalog
-- get_series_info(series_id) — Series metadata
-- analyze_cpi_seasonality(series_id, start?, end?) — Seasonality analysis
+- get_series_info(item) — Series metadata
+- analyze_cpi_seasonality(item, start?, end?) — Seasonality analysis
+`item` is the official BLS item name, e.g. "Food at home", "Medical care".
 Respond ONLY with the correct tool call. Do NOT use thinking or reasoning."""
 
 
@@ -294,9 +299,21 @@ def expand_seed(seed, target_count_per_seed=6, pool=None):
 
 
 def render_call(ex):
-    """Render a seed example's tool call, e.g. get_series(series_id="X")."""
+    """Render a seed example's tool call, e.g. get_series(item="Food at home").
+
+    The target names the ITEM, not the series id. Asking a 1.7B model to recall
+    `CUUR0000SAF11` makes its errors one-character sibling confusions — SAF11
+    (food at home) vs SAF1 (food), SAM (medical care) vs SEMD (hospital
+    services). Naming the item makes those errors semantically distinct, and a
+    name is fuzzy-matchable where a code is not. bls_data.items.resolve_item maps
+    back to the id deterministically, so a correct name is a correct series by
+    construction.
+    """
+    args = dict(ex["arguments"])
+    if sid := args.pop("series_id", None):
+        args = {"item": canonical_names()[sid], **args}   # item takes the id's slot
     args_str = ", ".join(f'{k}="{v}"' if isinstance(v, str) else f"{k}={v}"
-                         for k, v in ex["arguments"].items())
+                         for k, v in args.items())
     return f'{ex["tool"]}({args_str})'
 
 
