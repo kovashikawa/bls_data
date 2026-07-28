@@ -78,14 +78,17 @@ meaningful here — see "Report distributions" below.
 | **fine-tuned, emits item names (5-seed mean)** | 99.1% ±1.3 | **94.4% ±1.3** | **94.4% ±1.3** |
 | earlier version, emitted raw series IDs | 99.1% ±1.3 | 89.8% ±2.1 | 88.8% ±3.0 |
 | base Qwen3-1.7B | 72.1% | 9.3% | 9.3% |
-| BM25 over 400 item names, *no model* | — | — | 84.4% |
+| *baseline, not a component:* BM25 over 400 item names, no model | — | — | 84.4% |
 
 - **tool** — correct tool chosen (6-way). The easy part.
 - **entity** — tool + the load-bearing argument (`series_id`/`query`/`survey`), ignoring dates.
 - **exact** — every argument identical; spurious `start`/`end` count as wrong.
 
 The model emits **item names**, not series IDs — `get_series(item="Food at home")`
-— and `bls_data.items.resolve_item` maps back to the ID. That change alone is
+— and `bls_data.items.resolve_item` maps back to the ID by exact normalized
+lookup against a 400-row table. No search, no ranking, no index: BM25 appears in
+this repo only as the zero-model baseline in the last row and in
+`experiments_retrieval.py`. It is not in the serving path. That change alone is
 worth +5.6pp (t=3.8, p≈0.005) and more than halves seed variance. See "Why item
 names".
 
@@ -179,13 +182,17 @@ Measured on the same 43 held-out questions, retrieving over those 400 item names
 | oracle (gold item name) | 100% | 100% |
 | raw user question, no model | **84.4%** | 93.8% |
 | base Qwen3-1.7B rewrites it | 75.0% | 84.4% |
-| this fine-tuned model rewrites it | 62.5% | 71.9% |
+| the *old* ID-emitting adapter rewrites it | 62.5% | 71.9% |
 
-Two conclusions. The retriever has no ceiling problem, and a zero-model BM25
-baseline nearly matches the fine-tune. But every model in the chain currently
-makes retrieval *worse* — this adapter emits series IDs when asked for a search
-phrase, having specialized away its ability to paraphrase. So retrieval cannot be
-bolted on; it needs training from base on two-step traces.
+Two conclusions held at the time. The retriever has no ceiling problem, and a
+zero-model baseline nearly matched the then-current fine-tune. But every model in
+the chain made retrieval *worse* — the ID-emitting adapter had specialized so far
+into codes that, asked for a search phrase, it emitted `CUUR0000SEEB`.
+
+**That last row is now stale, and probably pessimistic.** It measured the adapter
+that emitted series IDs. The current one emits item names, which *are* catalogue
+vocabulary — so its query formulation is likely far better. Untested; worth
+re-running before assuming retrieval is hard.
 
 Next steps, in order:
 
