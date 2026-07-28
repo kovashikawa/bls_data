@@ -75,7 +75,8 @@ meaningful here — see "Report distributions" below.
 
 | | tool | entity | exact |
 |---|---|---|---|
-| fine-tuned (800 iters, 5-seed mean) | 99.1% ±1.3 | 89.8% ±2.1 | **88.8% ±3.0** |
+| **fine-tuned, emits item names (5-seed mean)** | 99.1% ±1.3 | **94.4% ±1.3** | **94.4% ±1.3** |
+| earlier version, emitted raw series IDs | 99.1% ±1.3 | 89.8% ±2.1 | 88.8% ±3.0 |
 | base Qwen3-1.7B | 72.1% | 9.3% | 9.3% |
 | BM25 over 400 item names, *no model* | — | — | 84.4% |
 
@@ -83,8 +84,12 @@ meaningful here — see "Report distributions" below.
 - **entity** — tool + the load-bearing argument (`series_id`/`query`/`survey`), ignoring dates.
 - **exact** — every argument identical; spurious `start`/`end` count as wrong.
 
-The third row is the baseline this project has to justify itself against, and
-currently barely does. See "Where this should go".
+The model emits **item names**, not series IDs — `get_series(item="Food at home")`
+— and `bls_data.items.resolve_item` maps back to the ID. That change alone is
+worth +5.6pp (t=3.8, p≈0.005) and more than halves seed variance. See "Why item
+names".
+
+The last row is the baseline this project has to justify itself against.
 
 ### How the split works
 
@@ -137,6 +142,34 @@ byte-identical; under Metal memory pressure results silently change.
 question, teaching nothing about concept→ID. It is capped at 2 per seed so real
 phrasings dominate.
 
+### Why item names
+
+Asking a 1.7B model to recall `CUUR0000SAF11` makes every residual error a
+one-character sibling confusion — `SAF11` (food at home) vs `SAF1` (food), `SAM`
+(medical care) vs `SEMD` (hospital services). No training config fixes that; the
+output format was wrong.
+
+The catalogue is not 8,103 independent series. It is ~400 distinct items repeated
+across area and seasonal-adjustment combinations, and restricted to US city
+average NSA the item name is a **unique key** over 400 rows. So the model can name
+the item and code can resolve it:
+
+| target format | exact (5 seeds) |
+|---|---|
+| `get_series(series_id="CUUR0000SAF11")` | 88.8% ±3.0 |
+| `get_series(item="Food at home")` | 92.1% ±1.3 |
+| + hierarchy-aware resolver | **94.4% ±1.3** |
+
+`resolve_item` prefers the general category when a bare term is a whole-word
+prefix of several ("tobacco" → *Tobacco and smoking products*, not *Tobacco
+products other than cigarettes*), and returns `None` rather than guessing between
+unrelated items — a loud failure beats silently fetching a sibling series.
+
+Remaining errors are two vocabulary gaps, consistent across every seed:
+"healthcare" → *Medical care*, "OER" → *Owners' equivalent rent*. An alias table
+would fix both. It is deliberately **not** added: those two are known only from
+inspecting test failures, so adding them would be fitting the test set.
+
 ### Where this should go
 
 The model memorizes 35 series IDs. The catalog is not really 8,103 series — it is
@@ -158,11 +191,18 @@ makes retrieval *worse* — this adapter emits series IDs when asked for a searc
 phrase, having specialized away its ability to paraphrase. So retrieval cannot be
 bolted on; it needs training from base on two-step traces.
 
-Next steps, in order: replace `search_series` (today a substring match with no
-ranking) with BM25 scoped to one area/seasonality; retrain from base on
-question → search → select traces; and judge the result against **both** 84.4%
-(no model) and 88.8% (this model). If it clears neither, ship the BM25 index and
-drop the adapter.
+Next steps, in order:
+
+1. **Enumerate the catalogue in context.** All 400 item names fit in ~2,274
+   tokens. That removes recall entirely — the model selects from a visible list
+   rather than remembering. Needs `max_seq_length` raised from 2048.
+2. **A general alias table** for user vocabulary → catalogue vocabulary, built
+   from domain knowledge rather than from test failures, and validated on val.
+3. **BM25 / retrieval** only if the catalogue outgrows context. It is the answer
+   to "the list does not fit", which is not currently the problem — and it
+   *requires* the query-formulation step measured above as harmful.
+
+Judge anything new against **both** 84.4% (no model at all) and 94.4% (current).
 
 ### Not supported: multi-step calls (deliberate)
 
