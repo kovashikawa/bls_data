@@ -1,254 +1,184 @@
 """
-Fine-tune a small language model for BLS data tool calling.
+Fine-tune the BLS Data Agent (Qwen3-1.7B + LoRA on Apple Silicon via MLX).
 
-Two paths:
-  A) Apple Silicon (M4) → MLX LoRA  (fastest, native)
-  B) CUDA GPU (Kaggle T4) → Unsloth QLoRA (battle-tested)
+This is a thin wrapper around `python -m mlx_lm.lora`, which is what actually
+produced every model in models/. The previous version of this file was dead
+code: it filtered rows on a "messages" key that the data has never had (so it
+silently loaded 0 examples and trained on nothing), and imported a `LoRA` symbol
+that does not exist in mlx_lm. It also carried an Unsloth/CUDA path that could
+not be tested on this machine. Both are gone — what remains is the pipeline that
+is actually run and verified here.
+
+Two findings are encoded below because neither is guessable:
+
+  * ~600 iterations. Val LOSS bottoms around iter 250 and rises monotonically,
+    but task accuracy keeps climbing to ~600 (37% -> 91% exact match). Early
+    stopping on val loss costs ~50 points. Cross-entropy punishes confident
+    near-misses while the emitted tool call keeps getting more correct.
+  * Checkpoints are selected on val ACCURACY, not val loss and not test
+    accuracy. Selecting on test would inflate the number you then report.
 
 Usage:
-  # Path A — M4 Mac
-  uv run python train.py --backend mlx --model Qwen/Qwen3-1.7B
-
-  # Path B — Kaggle/Colab GPU
-  uv run python train.py --backend unsloth --model Qwen/Qwen3-1.7B
+    python build_dataset.py          # must run first — writes mlx_data_clean/
+    python train.py                  # train + select checkpoint
+    python train.py --iters 900      # sweep further out
+    python train.py --no-select      # keep final weights, skip the sweep
+    python score.py --adapter models/bls-agent-v10
 """
 
 import argparse
 import json
-import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+
+MODEL = "Qwen/Qwen3-1.7B"
+DATA_DIR = Path("mlx_data_clean")
+SOURCES = [Path("seed_dataset.py"), Path("build_dataset.py")]
+
+# mask_prompt is the single most important setting here. Our data is heavily
+# short-completion — mean 134 prompt tokens vs 19 completion tokens (generation
+# ratio 0.141), and the system prompt is byte-identical in every row. With
+# mask_prompt off, 87.7% of the loss was the model re-predicting that fixed
+# preamble. That is why train loss looked implausibly low (0.04) and why val
+# loss decoupled from task accuracy: ~88% of val loss was measuring preamble
+# reproduction, not tool-call quality. This is a documented failure mode for
+# short-completion SFT (Huerta-Enochian & Ko, EMNLP 2024), not a property of
+# tool calling.
+#
+# num_layers -1 adapts all 28 transformer blocks; 16 left the first 12 frozen.
+DEFAULTS = dict(iters=800, batch_size=2, num_layers=-1, learning_rate="5e-5",
+                save_every=200, steps_per_eval=200, val_batches=25, seed=0)
+
+# rank 16 (was 8) for 82 concepts to memorise; cosine decay with warmup rather
+# than a constant LR, which left the run thrashing at the end.
+def _tuning_config(iters):
+    return {
+        "mask_prompt": True,
+        "lora_parameters": {"rank": 16, "dropout": 0.0, "scale": 20.0},
+        "lr_schedule": {
+            "name": "cosine_decay",
+            "warmup": max(10, iters // 20),      # ~5% warmup
+            "warmup_init": 1e-7,
+            "arguments": [5e-5, iters, 1e-6],    # [init_lr, decay_steps, end_lr]
+        },
+    }
 
 
-def load_dataset(path: str) -> list[dict]:
-    """Load ShareGPT-format training data."""
-    data = []
-    with open(path) as f:
-        for line in f:
-            ex = json.loads(line)
-            if "messages" in ex:
-                data.append(ex["messages"])
-    print(f"Loaded {len(data)} training examples from {path}")
-    return data
+def check_data_fresh():
+    """Refuse to train on data older than the code that generates it."""
+    needed = [DATA_DIR / f"{n}.jsonl" for n in ("train", "valid", "test")]
+    missing = [p for p in needed if not p.exists()]
+    if missing:
+        raise SystemExit(f"missing {[str(p) for p in missing]} — run: python build_dataset.py")
 
-
-# ═══════════════════════════════════════════════
-# Path A: MLX (Apple Silicon)
-# ═══════════════════════════════════════════════
-
-def train_mlx(model_name: str, data: list, output_dir: str, epochs: int = 4):
-    """Fine-tune using MLX LoRA (Apple Silicon native)."""
-    import mlx.core as mx
-    from mlx_lm import load, generate
-    from mlx_lm.lora import LoRA, train_model
-
-    print(f"╔══ MLX LoRA training ══╗")
-    print(f"Model: {model_name}")
-    print(f"Examples: {len(data)}")
-    print(f"Epochs: {epochs}")
-    print(f"Device: MPS (Apple Silicon)")
-
-    # Convert messages to instruction format
-    train_data = []
-    for msgs in data:
-        system = msgs[0]["content"]
-        user = msgs[1]["content"]
-        assistant = msgs[2]["content"]
-        train_data.append({
-            "text": f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n{assistant}<|im_end|>"
-        })
-
-    # Load model and apply LoRA
-    model, tokenizer = load(model_name)
-
-    lora = LoRA(
-        model=model,
-        r=16,
-        alpha=32,
-        dropout=0.05,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    )
-
-    train_model(
-        model,
-        tokenizer,
-        train_data,
-        lora_adapters=lora,
-        learning_rate=5e-5,
-        epochs=epochs,
-        batch_size=2,
-        grad_accum=4,
-        output_dir=output_dir,
-        val_split=0.1,
-        save_every=100,
-    )
-
-    print(f"Model saved to {output_dir}")
-    return output_dir
-
-
-# ═══════════════════════════════════════════════
-# Path B: Unsloth QLoRA (CUDA GPU)
-# ═══════════════════════════════════════════════
-
-def train_unsloth(model_name: str, data: list, output_dir: str, epochs: int = 4):
-    """Fine-tune using Unsloth QLoRA (CUDA GPU)."""
-    from unsloth import FastLanguageModel
-    from unsloth.chat_templates import get_chat_template, standardize_sharegpt
-    import torch
-    from datasets import Dataset
-    from transformers import TrainingArguments
-    from trl import SFTTrainer
-
-    print(f"╔══ Unsloth QLoRA training ══╗")
-    print(f"Model: {model_name}")
-    print(f"Examples: {len(data)}")
-    print(f"Epochs: {epochs}")
-    print(f"Device: {torch.cuda.get_device_name(0)}")
-
-    # Load 4-bit model
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name,
-        max_seq_length=2048,
-        load_in_4bit=True,
-        fast_inference=False,
-    )
-
-    # Apply LoRA
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=16,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
-        lora_alpha=32,
-        lora_dropout=0.05,
-        bias="none",
-        use_gradient_checkpointing=True,
-    )
-
-    # Convert to HF dataset
-    tokenizer = get_chat_template(tokenizer, chat_template="chatml")
-    hf_data = Dataset.from_list([{"messages": m} for m in data])
-    hf_data = standardize_sharegpt(hf_data)
-
-    def formatting_func(examples):
-        return tokenizer.apply_chat_template(
-            examples["messages"], tokenize=False, add_generation_prompt=False
+    newest_src = max(p.stat().st_mtime for p in SOURCES if p.exists())
+    oldest_data = min(p.stat().st_mtime for p in needed)
+    if newest_src > oldest_data:
+        raise SystemExit(
+            f"{DATA_DIR}/ is older than seed_dataset.py/build_dataset.py.\n"
+            "Training on stale data fails silently — run: python build_dataset.py"
         )
+    n = sum(1 for _ in open(needed[0]))
+    print(f"✓ {DATA_DIR}/ is current ({n} train rows)")
 
-    trainer = SFTTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=hf_data,
-        formatting_func=formatting_func,
-        args=TrainingArguments(
-            output_dir=output_dir,
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=4,
-            num_train_epochs=epochs,
-            learning_rate=5e-5,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            logging_steps=10,
-            save_strategy="epoch",
-            bf16=True,
-            optim="adamw_8bit",
-            report_to="none",
-        ),
+
+def train(adapter_path: Path, cfg: dict):
+    # rank / lr_schedule / mask_prompt have no CLI flags, so they go via YAML.
+    import yaml
+    conf_path = adapter_path / "_tuning.yaml"
+    conf_path.write_text(yaml.safe_dump(_tuning_config(cfg["iters"])))
+
+    cmd = [
+        # `-m mlx_lm.lora` still works but warns it is deprecated.
+        sys.executable, "-m", "mlx_lm", "lora",
+        "--model", MODEL, "--train", "--data", str(DATA_DIR),
+        "--adapter-path", str(adapter_path),
+        "--config", str(conf_path),
+        "--iters", str(cfg["iters"]),
+        "--batch-size", str(cfg["batch_size"]),
+        "--num-layers", str(cfg["num_layers"]),
+        "--learning-rate", str(cfg["learning_rate"]),
+        "--save-every", str(cfg["save_every"]),
+        "--steps-per-eval", str(cfg["steps_per_eval"]),
+        "--val-batches", str(cfg["val_batches"]),
+        "--seed", str(cfg["seed"]),
+    ]
+    print("+ " + " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def select_checkpoint(adapter_path: Path):
+    """Pick the checkpoint with the best exact-match on the VAL split.
+
+    Deliberately not val loss (it disagrees with accuracy here) and deliberately
+    not test (that is selection on the set you report).
+    """
+    import score
+
+    ckpts = sorted(adapter_path.glob("[0-9]*_adapters.safetensors"))
+    if not ckpts:
+        print("no intermediate checkpoints; keeping final weights")
+        return None
+
+    from mlx_lm import load
+    val_seeds = score.load_seed_set("val_seeds.json")
+    val_rows = score.load_jsonl_set("val_clean.jsonl")
+    combined = val_seeds + val_rows
+    print(f"\nSelecting checkpoint on val ({len(combined)} items)")
+
+    staging = adapter_path / "_staging"
+    results = []
+    for ckpt in ckpts:
+        staging.mkdir(exist_ok=True)
+        shutil.copy(adapter_path / "adapter_config.json", staging / "adapter_config.json")
+        shutil.copy(ckpt, staging / "adapters.safetensors")
+        model, tok = load(MODEL, adapter_path=str(staging))
+        outs = score.run(model, tok, [q for q, _, _ in combined])
+        r = score.score(outs, combined, ckpt.name)
+        results.append((r["exact"], r["entity"], ckpt))
+        print(f"  {ckpt.name}: val exact {r['exact']:.1%}  entity {r['entity']:.1%}")
+        del model
+    shutil.rmtree(staging, ignore_errors=True)
+
+    best_exact, best_entity, best = max(results, key=lambda t: (t[0], t[1]))
+    shutil.copy(best, adapter_path / "adapters.safetensors")
+
+    cfg_path = adapter_path / "adapter_config.json"
+    cfg = json.load(open(cfg_path))
+    cfg["_selected_checkpoint"] = best.name
+    cfg["_selection"] = (
+        f"adapters.safetensors is {best.name}, chosen by best exact-match on the "
+        f"val split ({best_exact:.1%}). Not chosen on val loss — val loss bottoms "
+        f"near iter 250 while accuracy keeps improving to ~600. Not chosen on "
+        f"test, which would inflate the reported number."
     )
+    json.dump(cfg, open(cfg_path, "w"), indent=4)
+    print(f"\n✓ selected {best.name} (val exact {best_exact:.1%}) -> adapters.safetensors")
+    return best
 
-    trainer.train()
-
-    # Save LoRA adapter
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
-    print(f"Adapter saved to {output_dir}")
-
-    # Merge and save full model
-    print("Merging LoRA weights...")
-    model = model.merge_and_unload()
-    merged_dir = os.path.join(output_dir, "merged")
-    model.save_pretrained(merged_dir)
-    tokenizer.save_pretrained(merged_dir)
-    print(f"Merged model saved to {merged_dir}")
-
-    return merged_dir
-
-
-# ═══════════════════════════════════════════════
-# GGUF Export
-# ═══════════════════════════════════════════════
-
-def export_gguf(model_dir: str, output_path: str, quant: str = "q4_k_m"):
-    """Export merged model to GGUF format using llama.cpp."""
-    import subprocess
-
-    llama_cpp_dir = os.path.expanduser("~/llama.cpp")
-    convert_script = os.path.join(llama_cpp_dir, "convert_hf_to_gguf.py")
-
-    if not os.path.exists(convert_script):
-        print("llama.cpp not found. Install: git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp")
-        print("Then: cd ~/llama.cpp && make")
-        return
-
-    # Convert to GGUF FP16
-    fp16_path = output_path.replace(".gguf", "_fp16.gguf")
-    subprocess.run([
-        sys.executable, convert_script, model_dir,
-        "--outfile", fp16_path,
-        "--outtype", "f16",
-    ], check=True)
-
-    # Quantize
-    quantize_bin = os.path.join(llama_cpp_dir, "llama-quantize")
-    subprocess.run([
-        quantize_bin, fp16_path, output_path, quant.upper()
-    ], check=True)
-
-    # Clean up FP16
-    os.remove(fp16_path)
-
-    size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    print(f"GGUF exported: {output_path} ({size_mb:.0f} MB, {quant})")
-
-
-# ═══════════════════════════════════════════════
-# Main
-# ═══════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="Fine-tune BLS Data Agent")
-    parser.add_argument("--backend", choices=["mlx", "unsloth"], default="unsloth",
-                        help="Training backend: mlx (Apple Silicon) or unsloth (CUDA)")
-    parser.add_argument("--model", default="Qwen/Qwen3-1.7B",
-                        help="Base model name or path")
-    parser.add_argument("--data", default="train.jsonl",
-                        help="Path to training data (JSONL)")
-    parser.add_argument("--epochs", type=int, default=4,
-                        help="Training epochs")
-    parser.add_argument("--output", default="models/bls-agent",
-                        help="Output directory")
-    parser.add_argument("--export-gguf", action="store_true",
-                        help="Export to GGUF after training")
-    parser.add_argument("--quant", default="q4_k_m",
-                        choices=["q4_k_m", "q4_k_s", "q8_0", "f16"],
-                        help="GGUF quantization level")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="Fine-tune the BLS Data Agent (MLX LoRA)")
+    p.add_argument("--output", default="models/bls-agent-v10", help="adapter output dir")
+    p.add_argument("--iters", type=int, default=DEFAULTS["iters"])
+    p.add_argument("--seed", type=int, default=DEFAULTS["seed"],
+                   help="training seed; run-to-run sd is ~6pp, so compare means over >=3 seeds")
+    p.add_argument("--no-select", action="store_true",
+                   help="skip the val-accuracy checkpoint sweep, keep final weights")
+    a = p.parse_args()
 
-    data = load_dataset(args.data)
-    os.makedirs(args.output, exist_ok=True)
+    check_data_fresh()
+    adapter_path = Path(a.output)
+    adapter_path.mkdir(parents=True, exist_ok=True)
 
-    if args.backend == "mlx":
-        model_dir = train_mlx(args.model, data, args.output, args.epochs)
-    else:
-        model_dir = train_unsloth(args.model, data, args.output, args.epochs)
+    cfg = {**DEFAULTS, "iters": a.iters, "seed": a.seed}
+    train(adapter_path, cfg)
+    if not a.no_select:
+        select_checkpoint(adapter_path)
 
-    if args.export_gguf:
-        gguf_path = os.path.join(args.output, f"bls-agent-{args.quant}.gguf")
-        export_gguf(model_dir, gguf_path, args.quant)
-
-    print(f"\n✓ Training complete. Model: {model_dir}")
+    print(f"\nNext: python score.py --adapter {adapter_path}")
 
 
 if __name__ == "__main__":
