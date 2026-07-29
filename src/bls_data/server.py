@@ -1,6 +1,7 @@
 """FastMCP server for BLS data — tools for querying and analyzing economic time series."""
 
 from typing import Optional
+import re
 import io
 import base64
 from datetime import datetime
@@ -11,7 +12,7 @@ from fastmcp import FastMCP
 from bls_data.client import BLSClient
 from bls_data.parser import parse_results_to_df
 from bls_data.mapping import load_mapping, resolve_series_ids
-from bls_data.items import resolve_item
+from bls_data.items import resolve_item, resolve_or_candidates, search_items
 
 mcp = FastMCP("bls-data-server")
 _client: Optional[BLSClient] = None
@@ -30,15 +31,31 @@ def _series(series_id: Optional[str] = None, item: Optional[str] = None):
     `item` exists because callers — including small models — are far more
     reliable at "Food at home" than at CUUR0000SAF11, where a one-character slip
     silently fetches a sibling series. Returns (series_id, error).
+
+    When a name doesn't resolve, the error carries ranked candidates so the
+    caller can pick without a second round-trip. It deliberately does not
+    auto-select the top candidate: fetching a sibling series returns
+    plausible-looking numbers that are quietly wrong, which is worse than asking.
     """
     if series_id:
         return series_id, None
     if not item:
         return None, {"error": "provide either series_id or item"}
-    if resolved := resolve_item(item):
+
+    resolved, candidates = resolve_or_candidates(item)
+    if resolved:
         return resolved, None
-    return None, {"error": f"could not resolve item {item!r} to a series. "
-                          "Use search_series() to find the official item name."}
+    if candidates:
+        return None, {
+            "error": f"{item!r} is not an exact item name — did you mean one of these?",
+            "did_you_mean": [
+                {"item": c.item_name, "series_id": c.series_id} for c in candidates
+            ],
+        }
+    return None, {
+        "error": f"could not resolve {item!r} to any BLS series, and nothing in "
+                 "the catalogue is close. Try search_series() with a broader term.",
+    }
 
 
 @mcp.tool()
@@ -107,23 +124,42 @@ def get_series_info(item: Optional[str] = None, series_id: Optional[str] = None)
 
 
 @mcp.tool()
-def search_series(query: str, limit: int = 10) -> dict:
-    """Search BLS series by keyword in the CPI master catalog.
-
-    The CPI catalog contains 8,000+ series with full titles. For broader
-    discovery, use list_surveys() and popular_series() first.
+def search_series(query: str, limit: int = 10, scope: str = "items") -> dict:
+    """Search the BLS CPI catalog by keyword, best match first.
 
     Args:
-        query: Search term (e.g. 'food', 'housing', 'energy', 'medical')
+        query: Search term, in everyday words — 'groceries', 'healthcare', 'gas'
         limit: Max results
+        scope: 'items' (default) ranks the 400 US-city-average, not-seasonally-
+               adjusted items by BM25 and returns names usable directly as
+               `item=`. 'all' falls back to a substring scan of the full 8,100-row
+               catalog, including regional and seasonally-adjusted series.
+
+    Default scope is 'items' because the previous behaviour — an unranked
+    substring scan of everything — surfaced seasonally-adjusted (CUSR) series
+    ahead of the CUUR series every other tool here uses, and returned nothing at
+    all for words like 'healthcare' that share no token with an item title.
     """
     try:
+        if scope == "items":
+            hits = search_items(query, limit=limit)
+            return {
+                "query": query,
+                "scope": "US city average, not seasonally adjusted",
+                "count": len(hits),
+                "results": [
+                    {"item": h.item_name, "series_id": h.series_id, "score": h.score}
+                    for h in hits
+                ],
+            }
+
         from bls_data.cpi import _MASTER_PATH
         cpi = pd.read_csv(_MASTER_PATH, dtype=str)
-        mask = cpi["series_title"].str.contains(query, case=False, na=False)
+        mask = cpi["series_title"].str.contains(re.escape(query), case=False, na=False)
         results = cpi[mask].head(limit)
         return {
             "query": query,
+            "scope": "full catalog (all areas and seasonal adjustments)",
             "count": len(results),
             "results": results[["series_id", "series_title"]].to_dict("records"),
         }
