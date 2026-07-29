@@ -23,7 +23,7 @@ Usage:
     python train.py                  # train + select checkpoint
     python train.py --iters 900      # sweep further out
     python train.py --no-select      # keep final weights, skip the sweep
-    python score.py --adapter models/bls-agent-v7
+    python score.py --adapter models/bls-agent-v10
 """
 
 import argparse
@@ -161,7 +161,7 @@ def select_checkpoint(adapter_path: Path):
 
 def main():
     p = argparse.ArgumentParser(description="Fine-tune the BLS Data Agent (MLX LoRA)")
-    p.add_argument("--output", default="models/bls-agent-v7", help="adapter output dir")
+    p.add_argument("--output", default="models/bls-agent-v10", help="adapter output dir")
     p.add_argument("--iters", type=int, default=DEFAULTS["iters"])
     p.add_argument("--seed", type=int, default=DEFAULTS["seed"],
                    help="training seed; run-to-run sd is ~6pp, so compare means over >=3 seeds")
