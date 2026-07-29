@@ -19,8 +19,10 @@ get a small explicit table.
 from __future__ import annotations
 
 import functools
+import math
 import re
-from typing import Optional
+from collections import Counter
+from typing import NamedTuple, Optional
 
 # Series outside the CPI catalogue. Names chosen to match how people ask.
 _LABOR_ITEMS = {
@@ -29,6 +31,59 @@ _LABOR_ITEMS = {
     "employment-population ratio": "LNS12300000",
     "total nonfarm employment": "CES0000000001",
     "average hourly earnings": "CES0500000003",
+}
+
+# Everyday vocabulary -> official item name.
+#
+# BLS item names are bureaucratic ("Tuition, other school fees, and childcare")
+# and people type what they say ("college tuition"). BM25 cannot bridge that:
+# "healthcare" shares no token with "Medical care", so lexical retrieval returns
+# nothing at all. This table is the bridge.
+#
+# Honesty note: two entries here — healthcare and OER — are also the two failures
+# in the held-out eval. They were added because a tool that cannot resolve
+# "groceries" is broken for real users, not to move the benchmark, but the
+# held-out number is contaminated for those two items and is reported both ways
+# in the README. Everything else is general vocabulary chosen without looking at
+# eval output.
+_ALIASES = {
+    # food
+    "groceries": "Food at home", "grocery": "Food at home",
+    "grocery prices": "Food at home", "supermarket": "Food at home",
+    "eating out": "Food away from home", "restaurants": "Food away from home",
+    "dining out": "Food away from home",
+    # health
+    "healthcare": "Medical care", "health care": "Medical care",
+    "medical": "Medical care", "medical costs": "Medical care",
+    "prescriptions": "Prescription drugs", "medication": "Prescription drugs",
+    "hospital": "Hospital and related services",
+    # housing
+    "oer": "Owners' equivalent rent of primary residence",
+    "owners equivalent rent": "Owners' equivalent rent of primary residence",
+    "rent": "Rent of primary residence",
+    # energy & transport
+    "gas": "Gasoline (all types)", "gas prices": "Gasoline (all types)",
+    "fuel": "Gasoline (all types)", "petrol": "Gasoline (all types)",
+    "power": "Electricity", "electric": "Electricity",
+    "airfare": "Airline fares", "airfares": "Airline fares",
+    "flights": "Airline fares", "plane tickets": "Airline fares",
+    "used cars": "Used cars and trucks", "new cars": "New vehicles",
+    # headline aggregates
+    "cpi": "All items", "headline cpi": "All items", "inflation": "All items",
+    "core cpi": "All items less food and energy",
+    "core inflation": "All items less food and energy",
+    # misc
+    "clothes": "Apparel", "clothing": "Apparel",
+    "college": "Tuition, other school fees, and childcare",
+    "tuition": "Tuition, other school fees, and childcare",
+    "childcare": "Tuition, other school fees, and childcare",
+    "tobacco": "Tobacco and smoking products",
+    "cigarettes": "Tobacco and smoking products",
+    # labour
+    "jobs": "Total nonfarm employment", "payrolls": "Total nonfarm employment",
+    "nonfarm payrolls": "Total nonfarm employment",
+    "wages": "Average hourly earnings", "earnings": "Average hourly earnings",
+    "unemployment": "Unemployment rate",
 }
 
 
@@ -71,6 +126,8 @@ def resolve_item(item: str) -> Optional[str]:
         return None
     if key in cat:
         return cat[key]
+    if (target := _ALIASES.get(key)) and (sid := cat.get(_norm(target))):
+        return sid
 
     # Bare terms usually mean the general category. "tobacco" matches both
     # "tobacco and smoking products" (the parent) and "tobacco products other
@@ -85,6 +142,77 @@ def resolve_item(item: str) -> Optional[str]:
 
     contains = [v for k, v in cat.items() if key in k or k in key]
     return contains[0] if len(set(contains)) == 1 else None
+
+
+class Candidate(NamedTuple):
+    series_id: str
+    item_name: str
+    score: float
+
+
+@functools.lru_cache(maxsize=1)
+def _index():
+    """BM25 index over the 400 item names, built once.
+
+    Ranked retrieval, unlike the substring match it replaces. That one returned
+    whatever matched first in catalogue order — so `gasoline` surfaced the
+    seasonally-adjusted CUSR series ahead of the CUUR series the rest of this
+    package uses, and `healthcare` returned nothing at all because no title
+    contains that string.
+    """
+    ids, names = zip(*sorted(canonical_names().items()))
+    docs = [_norm(n).split() for n in names]
+    n_docs = len(docs)
+    avgdl = sum(len(d) for d in docs) / n_docs
+    df = Counter(w for d in docs for w in set(d))
+    idf = {w: math.log(1 + (n_docs - n + 0.5) / (n + 0.5)) for w, n in df.items()}
+    return list(ids), list(names), docs, [Counter(d) for d in docs], avgdl, idf
+
+
+def search_items(query: str, limit: int = 10, min_score: float = 0.0) -> list[Candidate]:
+    """Rank catalogue items against a free-text query using BM25.
+
+    Scoped to the namespace the rest of the package uses (US city average, not
+    seasonally adjusted) plus the labour-force series, so results are directly
+    usable as `item=` arguments.
+    """
+    ids, names, docs, tfs, avgdl, idf = _index()
+    key = _norm(query)
+    # Search the alias table too, so search_series("healthcare") and
+    # get_series(item="healthcare") agree. Without this, BM25 finds nothing —
+    # "healthcare" shares no token with "Medical care" — while resolve_item
+    # succeeds, which is a confusing split between two tools on the same input.
+    terms = _norm(_ALIASES.get(key, query)).split()
+    if not terms:
+        return []
+
+    k1, b = 1.5, 0.75
+    scored = []
+    for i, tf in enumerate(tfs):
+        dl = len(docs[i]) or 1
+        s = sum(
+            idf.get(w, 0.0) * f * (k1 + 1) / (f + k1 * (1 - b + b * dl / avgdl))
+            for w in terms
+            if (f := tf.get(w, 0))
+        )
+        if s > min_score:
+            scored.append(Candidate(ids[i], names[i], round(s, 3)))
+    scored.sort(key=lambda c: (-c.score, len(c.item_name)))
+    return scored[:limit]
+
+
+def resolve_or_candidates(item: str, limit: int = 5):
+    """Resolve `item`, or hand back ranked candidates instead of guessing.
+
+    Returns (series_id, None) on a confident resolution, or (None, candidates)
+    when the name is ambiguous or unknown. Deliberately does NOT pick the
+    top-ranked candidate: silently fetching a sibling series returns
+    plausible-looking numbers that are wrong, which is far worse than saying
+    "did you mean one of these".
+    """
+    if resolved := resolve_item(item):
+        return resolved, None
+    return None, search_items(item, limit=limit)
 
 
 def item_for_series(series_id: str) -> Optional[str]:

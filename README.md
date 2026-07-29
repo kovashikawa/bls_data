@@ -36,8 +36,23 @@ python -m bls_data.server
 **Available tools:** `get_series`, `get_series_info`, `search_series`, `list_surveys`,
 `popular_series`, `analyze_cpi_seasonality`
 
-Note that `search_series` searches the bundled CPI master catalog only (~8,100 series),
-not all of BLS. Use `list_surveys` and `popular_series` for broader discovery.
+`get_series`, `get_series_info` and `analyze_cpi_seasonality` take an everyday
+**item name** — you never need a series ID:
+
+```python
+get_series(item="groceries", start="2024")      # -> CUUR0000SAF11, Food at home
+get_series(item="healthcare")                   # -> CUUR0000SAM,   Medical care
+get_series(item="public transport")             # -> did_you_mean: [Public transportation, ...]
+```
+
+An ambiguous name comes back as ranked candidates rather than a guess — silently
+fetching a sibling series returns plausible numbers that are wrong. A name that
+matches nothing says so.
+
+`search_series` ranks the 400 US-city-average, not-seasonally-adjusted items by
+BM25 and returns names usable directly as `item=`. Pass `scope="all"` to scan the
+full ~8,100-row catalog instead, including regional and seasonally-adjusted
+series.
 
 ### CLI (legacy)
 
@@ -76,6 +91,7 @@ meaningful here — see "Report distributions" below.
 | | tool | entity | exact |
 |---|---|---|---|
 | **fine-tuned, emits item names (5-seed mean)** | 99.1% ±1.3 | **94.4% ±1.3** | **94.4% ±1.3** |
+| &nbsp;&nbsp;└ same model, + resolver alias table | 99.1% ±1.3 | 96.7% ±1.3 | 96.7% ±1.3 &nbsp;<sup>†</sup> |
 | earlier version, emitted raw series IDs | 99.1% ±1.3 | 89.8% ±2.1 | 88.8% ±3.0 |
 | base Qwen3-1.7B | 72.1% | 9.3% | 9.3% |
 | *baseline, not a component:* BM25 over 400 item names, no model | — | — | 84.4% |
@@ -91,6 +107,13 @@ this repo only as the zero-model baseline in the last row and in
 `experiments_retrieval.py`. It is not in the serving path. That change alone is
 worth +5.6pp (t=3.8, p≈0.005) and more than halves seed variance. See "Why item
 names".
+
+<sup>†</sup> **Read 94.4% as the model's number.** The alias row is the same five
+adapters with a better resolver, and its entire +2.3pp is one item — the
+`healthcare` → *Medical care* alias, which was added knowing that item failed in
+the held-out set. The other ~50 aliases (`groceries`, `gas`, `core CPI`, …) move
+this eval by exactly zero, because its questions don't use that vocabulary. They
+earn their place on usability, not on this table.
 
 The last row is the baseline this project has to justify itself against.
 
@@ -168,10 +191,14 @@ prefix of several ("tobacco" → *Tobacco and smoking products*, not *Tobacco
 products other than cigarettes*), and returns `None` rather than guessing between
 unrelated items — a loud failure beats silently fetching a sibling series.
 
-Remaining errors are two vocabulary gaps, consistent across every seed:
-"healthcare" → *Medical care*, "OER" → *Owners' equivalent rent*. An alias table
-would fix both. It is deliberately **not** added: those two are known only from
-inspecting test failures, so adding them would be fitting the test set.
+Remaining error is one item, consistent across every seed: **"OER"**. An alias for
+it exists, but it never fires — the model emits `item="Education and
+communication"`, a hallucination the resolver cannot repair. That is a model
+error, not a lookup error.
+
+(The other long-standing failure, "healthcare", *is* now fixed by the alias
+table — the model emits "Health care" and the resolver maps it. See the † note
+under Results: that fix is why the alias row is not the headline number.)
 
 ### Where this should go
 
