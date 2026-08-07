@@ -82,17 +82,14 @@ from bls_data.parser import parse_results_to_df
 df = parse_results_to_df(BLSClient().fetch(["CUUR0000SA0"], start_year=2020, end_year=2024))
 ```
 
-### CLI (legacy)
-
-```bash
-python -m data_extraction.main CUUR0000SA0 --start 2020 --end 2024
-```
-
 ## Fine-tuned agent
 
 A 67 MB LoRA adapter over Qwen3-1.7B that maps a natural-language question to one
 tool call. Runs on Apple Silicon via MLX. Optional — the MCP server works fine
 driven by any model.
+
+Full writeup of the measurement journey (the leaks, the wrong labels, the
+val-loss trap): [The Measurement Was Harder Than the Model](https://kovashikawa.github.io/ai/projects/distilling-bls-agent/).
 
 ```bash
 python build_dataset.py                        # seeds → splits + mlx_data_clean/
