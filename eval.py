@@ -1,15 +1,17 @@
 """
-Evaluate the fine-tuned BLS Data Agent against the base model and teacher.
+DEPRECATED — use score.py instead.
 
-Compares:
-  - Base model (zero-shot) performance
-  - Fine-tuned model performance
-  - Teacher baseline (if available)
+This eval was superseded by score.py, which has the correct parser
+(balanced-paren scanning + ast.literal_eval, not split(",")), the
+item-name resolver for scoring (canonical_names), proper split handling,
+and the render_call gold-derivation that prevents format drift.
 
-Metrics:
-  - Tool selection accuracy (did it pick the right tool?)
-  - Argument accuracy (did it pick the right series_id/query?)
-  - Exact match (did it produce the exact correct call?)
+The parse_tool_call below uses naive split(","), which mis-parses any
+quoted value containing a comma. score.py:parse_call is the real parser.
+
+For backward compat only. To score an adapter:
+
+    python score.py --adapter models/bls-agent-v10
 """
 
 import argparse

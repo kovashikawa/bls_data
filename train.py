@@ -11,10 +11,13 @@ is actually run and verified here.
 
 Two findings are encoded below because neither is guessable:
 
-  * ~600 iterations. Val LOSS bottoms around iter 250 and rises monotonically,
-    but task accuracy keeps climbing to ~600 (37% -> 91% exact match). Early
-    stopping on val loss costs ~50 points. Cross-entropy punishes confident
-    near-misses while the emitted tool call keeps getting more correct.
+  * mask_prompt: True. Our data is short-completion (134 prompt tokens vs 19
+    completion), and the system prompt is identical in every row. Without
+    masking, ~88% of the loss measured preamble reproduction — val loss
+    decoupled from task accuracy because most of the signal was noise. This
+    is a documented failure mode for short-completion SFT (Huerta-Enochian &
+    Ko, EMNLP 2024), not a property of tool calling. Mask the prompt and
+    standard practice works fine: val loss bottoms where accuracy peaks.
   * Checkpoints are selected on val ACCURACY, not val loss and not test
     accuracy. Selecting on test would inflate the number you then report.
 
@@ -112,8 +115,9 @@ def train(adapter_path: Path, cfg: dict):
 def select_checkpoint(adapter_path: Path):
     """Pick the checkpoint with the best exact-match on the VAL split.
 
-    Deliberately not val loss (it disagrees with accuracy here) and deliberately
-    not test (that is selection on the set you report).
+    With mask_prompt: True, val loss tracks accuracy — but selecting on accuracy
+    directly avoids any residual decoupling and is the metric that matters.
+    Deliberately not test (that is selection on the set you report).
     """
     import score
 
@@ -150,9 +154,9 @@ def select_checkpoint(adapter_path: Path):
     cfg["_selected_checkpoint"] = best.name
     cfg["_selection"] = (
         f"adapters.safetensors is {best.name}, chosen by best exact-match on the "
-        f"val split ({best_exact:.1%}). Not chosen on val loss — val loss bottoms "
-        f"near iter 250 while accuracy keeps improving to ~600. Not chosen on "
-        f"test, which would inflate the reported number."
+        f"val split ({best_exact:.1%}). With mask_prompt: True, val loss tracks "
+        f"accuracy, but selecting on accuracy directly avoids any residual "
+        f"decoupling. Not chosen on test, which would inflate the reported number."
     )
     json.dump(cfg, open(cfg_path, "w"), indent=4)
     print(f"\n✓ selected {best.name} (val exact {best_exact:.1%}) -> adapters.safetensors")
@@ -164,7 +168,7 @@ def main():
     p.add_argument("--output", default="models/bls-agent-v10", help="adapter output dir")
     p.add_argument("--iters", type=int, default=DEFAULTS["iters"])
     p.add_argument("--seed", type=int, default=DEFAULTS["seed"],
-                   help="training seed; run-to-run sd is ~6pp, so compare means over >=3 seeds")
+                   help="training seed; run-to-run sd is ~1.3pp, so compare means over >=3 seeds")
     p.add_argument("--no-select", action="store_true",
                    help="skip the val-accuracy checkpoint sweep, keep final weights")
     a = p.parse_args()

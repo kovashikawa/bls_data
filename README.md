@@ -1,289 +1,208 @@
 # bls_data
 
-Clean Python toolkit for U.S. Bureau of Labor Statistics (BLS) time-series data — API client, parser, series mapping, and MCP server.
+Python toolkit for U.S. Bureau of Labor Statistics time-series data — API client,
+parser, MCP server, and a fine-tuned local model that turns questions into tool
+calls.
 
 ## Install
 
 ```bash
 pip install -e .
-# or with dev deps
-pip install -e ".[dev]"
-# with plotting support
-pip install -e ".[plot]"
-```
-
-## Usage
-
-### As a library
-
-```python
-from bls_data import BLSClient, fetch_bls_data
-from bls_data.parser import parse_results_to_df
-
-client = BLSClient()
-data = client.fetch(["CUUR0000SA0"], start_year=2020, end_year=2024)
-df = parse_results_to_df(data)
-print(df.head())
-```
-
-### MCP server
-
-```bash
-# configure .env with BLS_API_KEY_0=your_key
-python -m bls_data.server
-```
-
-**Available tools:** `get_series`, `get_series_info`, `search_series`, `list_surveys`,
-`popular_series`, `analyze_cpi_seasonality`
-
-Note that `search_series` searches the bundled CPI master catalog only (~8,100 series),
-not all of BLS. Use `list_surveys` and `popular_series` for broader discovery.
-
-### CLI (legacy)
-
-```bash
-python -m data_extraction.main CUUR0000SA0 --start 2020 --end 2024
+pip install -e ".[dev]"     # dev dependencies
+pip install -e ".[plot]"    # plotting (needed by analyze_cpi_seasonality)
 ```
 
 ## API key
 
-Register at https://www.bls.gov/developers/api_signature_v2.htm. Add to `.env`:
+Register at <https://www.bls.gov/developers/api_signature_v2.htm>, then add to `.env`:
 
 ```
 BLS_API_KEY_0=your_key_here
-BLS_API_KEY_1=another_key  # optional — keys rotate randomly
+BLS_API_KEY_1=another_key   # optional — any BLS_API_KEY_* is used, chosen at random
 ```
 
-## Fine-tuned agent (distillation)
+## Usage
 
-A LoRA adapter over Qwen3-1.7B that maps a natural-language question to the right
-MCP tool call. Runs on Apple Silicon via MLX.
+### MCP server
 
 ```bash
-python build_dataset.py                       # seeds -> splits + mlx_data_clean/
-python train.py                               # train + select checkpoint on val
-python score.py --adapter models/bls-agent-v10 # report held-out accuracy
+python -m bls_data.server
+```
+
+To register with Claude Code (MCP servers start in an arbitrary working directory,
+so pass the key explicitly):
+
+```bash
+claude mcp add bls -e BLS_API_KEY_0=<your_key> \
+  -- /path/to/bls_data/.venv/bin/python -m bls_data.server
+```
+
+**Tools:** `get_series`, `get_series_info`, `search_series`, `list_surveys`,
+`popular_series`, `analyze_cpi_seasonality`.
+
+`get_series`, `get_series_info` and `analyze_cpi_seasonality` take an everyday
+**item name**. You never need a series ID:
+
+```python
+get_series(item="groceries", start="2024")   # → CUUR0000SAF11  Food at home
+get_series(item="healthcare")                # → CUUR0000SAM    Medical care
+get_series(item="public transport")          # → did_you_mean: [Public transportation, …]
+get_series(series_id="CUUR0000SA0")          # raw IDs still accepted
+```
+
+Resolution is exact-match first, then an alias table for everyday vocabulary
+(`groceries`, `gas`, `core CPI`, `airfare`, `jobs`), then a whole-word prefix
+preference that favours the general category (`tobacco` → *Tobacco and smoking
+products*). An ambiguous name returns **ranked candidates rather than a guess** —
+fetching a sibling series would return plausible numbers that are wrong. A name
+matching nothing says so.
+
+`search_series` ranks the 400 US-city-average, not-seasonally-adjusted items by
+BM25 and returns names usable directly as `item=`. Pass `scope="all"` to scan the
+full ~8,100-row catalog instead, including regional and seasonally-adjusted series.
+
+### As a library
+
+```python
+from dotenv import load_dotenv; load_dotenv(".env")
+from bls_data.server import get_series, search_series
+from bls_data.items import resolve_item, search_items
+
+get_series(item="Food at home", start="2023", end="2024")
+resolve_item("healthcare")        # → 'CUUR0000SAM'
+search_items("gasoline", limit=3) # → ranked Candidate(series_id, item_name, score)
+```
+
+Lower level, if you want the raw client:
+
+```python
+from bls_data import BLSClient
+from bls_data.parser import parse_results_to_df
+
+df = parse_results_to_df(BLSClient().fetch(["CUUR0000SA0"], start_year=2020, end_year=2024))
+```
+
+## Fine-tuned agent
+
+A 67 MB LoRA adapter over Qwen3-1.7B that maps a natural-language question to one
+tool call. Runs on Apple Silicon via MLX. Optional — the MCP server works fine
+driven by any model.
+
+Full writeup of the measurement journey (the leaks, the wrong labels, the
+val-loss trap): [The Measurement Was Harder Than the Model](https://kovashikawa.github.io/ai/projects/distilling-bls-agent/).
+
+```bash
+python build_dataset.py                        # seeds → splits + mlx_data_clean/
+python train.py --seed 0                       # ~12 min on an M4
+python score.py --adapter models/bls-agent-v10
+```
+
+Example output:
+
+```
+"How have grocery prices moved since 2022?"  →  get_series(item="Food at home", start="2022")
+"Analyze seasonality in gas prices."         →  analyze_cpi_seasonality(item="Gasoline (all types)")
 ```
 
 ### Results
 
-Measured on 43 held-out *phrasings* — wordings absent from training, though every
-concept they reference is present (see "How the split works").
-
-Mean over **5 training seeds** ± one sd across seeds. Single-run numbers are not
-meaningful here — see "Report distributions" below.
+43 held-out phrasings — wordings absent from training, though every concept they
+reference appears in it. Mean over **5 training seeds**, ± one sd across seeds.
 
 | | tool | entity | exact |
 |---|---|---|---|
-| **fine-tuned, emits item names (5-seed mean)** | 99.1% ±1.3 | **94.4% ±1.3** | **94.4% ±1.3** |
-| earlier version, emitted raw series IDs | 99.1% ±1.3 | 89.8% ±2.1 | 88.8% ±3.0 |
+| **fine-tuned** | **99.1% ±1.3** | **94.4% ±1.3** | **94.4% ±1.3** |
+| fine-tuned, with resolver alias table | 99.1% ±1.3 | 96.7% ±1.3 | 96.7% ±1.3 |
 | base Qwen3-1.7B | 72.1% | 9.3% | 9.3% |
-| *baseline, not a component:* BM25 over 400 item names, no model | — | — | 84.4% |
+| BM25 over 400 item names, no model | — | — | 84.4% |
 
-- **tool** — correct tool chosen (6-way). The easy part.
-- **entity** — tool + the load-bearing argument (`series_id`/`query`/`survey`), ignoring dates.
-- **exact** — every argument identical; spurious `start`/`end` count as wrong.
+- **tool** — correct tool chosen, out of six.
+- **entity** — plus the load-bearing argument (item / query / survey), ignoring dates.
+- **exact** — every argument identical.
 
-The model emits **item names**, not series IDs — `get_series(item="Food at home")`
-— and `bls_data.items.resolve_item` maps back to the ID by exact normalized
-lookup against a 400-row table. No search, no ranking, no index: BM25 appears in
-this repo only as the zero-model baseline in the last row and in
-`experiments_retrieval.py`. It is not in the serving path. That change alone is
-worth +5.6pp (t=3.8, p≈0.005) and more than halves seed variance. See "Why item
-names".
+Quote **94.4%** as the model's figure. The alias row is the same five adapters
+with a better resolver, and its +2.3pp is a single test item whose alias was
+written knowing that item failed; the rest of the alias table moves this eval by
+zero. The last row is the baseline the model has to beat, and does.
 
-The last row is the baseline this project has to justify itself against.
+### Design
 
-### How the split works
+**Targets are item names, not series IDs.** `get_series(item="Food at home")`, with
+`bls_data.items.resolve_item` mapping to the ID. The catalog is ~400 distinct items
+repeated across area and seasonal-adjustment combinations; restricted to US city
+average NSA, the item name is a unique key. Naming the item makes near-misses
+semantically distinct rather than one character apart, and lets a wrong answer fail
+loudly instead of silently fetching a sibling.
 
-This is a **lookup** task — `"medical care" -> CUUR0000SAM` cannot be derived, only
-recalled. So the split holds out *phrasings*, not concepts:
+**The split holds out phrasings, not concepts.** This is a lookup task — `"medical
+care" → CUUR0000SAM` can only be recalled, not derived — so every concept
+contributes at least one phrasing to training and the remaining phrasings are held
+out. `seed_dataset.py` is concept tables: 205 seeds over 82 concepts, ≥2 phrasings
+each, giving 229 / 50 / 76 rows.
 
-- `seed_dataset.py` is concept tables: 205 seeds over 82 concepts, ≥2 phrasings each.
-- Every concept contributes at least one phrasing to train; the rest go to val/test.
-- The build **fails** if any concept is held out entirely, if any series ID is absent
-  from the CPI catalog, or if any example appears in more than one split.
+**The build fails rather than producing wrong data.** It refuses to write if any
+series ID is absent from the bundled catalog, any example appears in two splits,
+any concept is held out entirely, or any label carries dates its question never
+mentions.
 
-Earlier versions held out whole seeds, which put whole concepts in test — 4 of 11
-scored items asked for a series ID that appeared nowhere in training and were
-unanswerable by construction.
+**Training config that matters:** `mask_prompt: true` (the data is short-completion
+— 134 prompt tokens against 19 completion, with an identical system prompt every
+row, so unmasked loss is ~88% preamble), LoRA rank 16 across all 28 layers, cosine
+schedule with warmup, 800 iterations, checkpoint selected on val accuracy.
 
-### Non-obvious findings
+### Running it yourself
 
-**Mask the prompt.** This data is heavily short-completion: mean 134 prompt tokens
-vs 19 completion tokens (generation ratio 0.141), with an identical system prompt
-in every row. With `mask_prompt: false`, **87.7% of the loss was the model
-re-predicting a fixed preamble** — which is why train loss looked implausibly low
-and why val loss appeared to decouple from accuracy:
+- **Use ≥3 seeds for any comparison.** Run-to-run sd is ~1.3pp. `train.py --seed`.
+- **Score on an otherwise-idle machine.** Evaluating while a training job holds the
+  GPU returns different numbers for identical weights; isolated runs are
+  byte-identical.
+- **`train.py` refuses to run** if `mlx_data_clean/` is older than
+  `seed_dataset.py` or `build_dataset.py`.
+- **MLX / Apple Silicon only.** GGUF export needs a fused model (`mlx_lm.fuse`) and
+  is not wired up.
 
-| | unmasked | masked |
-|---|---|---|
-| pick checkpoint by val-loss minimum | 37.2% | 86.8% |
-| best checkpoint available | 90.7% | 88.4% |
-| **penalty for trusting val loss** | **~50pt** | **1.6pt** |
+### Limitations
 
-An earlier version of this README claimed "do not early-stop on val loss" as a
-property of structured-output tasks. That was wrong — it was this config bug, and
-it's a documented short-completion SFT failure mode (Huerta-Enochian & Ko, EMNLP
-2024). Once the loss measures the completion, standard practice works.
+- **One tool call per turn, by design.** An MCP host runs the call → result → call
+  loop, so the useful contract is picking the right single call. Multi-step is not
+  trained.
+- **35 concepts were taught.** Anything outside them depends on the resolver and
+  `search_series`, not on the model.
+- **The model can hallucinate an item name** that resolves to the wrong series.
+  Known case: "OER" → *Education and communication*. No resolver can repair that.
+- **The expander is capped at 2 rows per seed.** Beyond that it mostly emits rows
+  echoing an ID already in the question, which teaches nothing.
 
-`train.py` still selects on val **accuracy** rather than val loss, which costs
-little and is robust either way. It selects on val, not test — choosing by test
-accuracy is selection on the set you then report.
+### Next
 
-**Report distributions, not runs.** Run-to-run sd is ~1.3pp now; it was ~3pp
-before item-name targets and ~6pp before prompt masking. A 14-point spread across seeds previously led to diagnosing a
-14-point "regression" from a change that was actually correct. `train.py --seed`
-exists for this; use ≥3.
+1. **Enumerate the catalog in context** — all 400 item names fit in ~2,274 tokens,
+   removing recall from the problem. Needs `max_seq_length` above 2048.
+2. **Extend the alias table** from domain vocabulary, validated on val.
+3. **Retrieval / two-step calling** only if the catalog outgrows the context window.
 
-**Score on a quiet machine.** Evaluating concurrently with a training job on the
-same GPU returns *different numbers for identical weights*. Two isolated runs are
-byte-identical; under Metal memory pressure results silently change.
+Judge anything new against both 84.4% (no model) and 94.4% (current).
 
-**Expansion has sharply diminishing returns.** The synthetic expander mostly emits
-`"Show me data for series CUUR0000SAF1."` rows that echo an ID already present in the
-question, teaching nothing about concept→ID. It is capped at 2 per seed so real
-phrasings dominate.
-
-### Why item names
-
-Asking a 1.7B model to recall `CUUR0000SAF11` makes every residual error a
-one-character sibling confusion — `SAF11` (food at home) vs `SAF1` (food), `SAM`
-(medical care) vs `SEMD` (hospital services). No training config fixes that; the
-output format was wrong.
-
-The catalogue is not 8,103 independent series. It is ~400 distinct items repeated
-across area and seasonal-adjustment combinations, and restricted to US city
-average NSA the item name is a **unique key** over 400 rows. So the model can name
-the item and code can resolve it:
-
-| target format | exact (5 seeds) |
-|---|---|
-| `get_series(series_id="CUUR0000SAF11")` | 88.8% ±3.0 |
-| `get_series(item="Food at home")` | 92.1% ±1.3 |
-| + hierarchy-aware resolver | **94.4% ±1.3** |
-
-`resolve_item` prefers the general category when a bare term is a whole-word
-prefix of several ("tobacco" → *Tobacco and smoking products*, not *Tobacco
-products other than cigarettes*), and returns `None` rather than guessing between
-unrelated items — a loud failure beats silently fetching a sibling series.
-
-Remaining errors are two vocabulary gaps, consistent across every seed:
-"healthcare" → *Medical care*, "OER" → *Owners' equivalent rent*. An alias table
-would fix both. It is deliberately **not** added: those two are known only from
-inspecting test failures, so adding them would be fitting the test set.
-
-### Where this should go
-
-Measured on the same 43 held-out questions, retrieving over those 400 item names:
-
-| query source | recall@1 | recall@5 |
-|---|---|---|
-| oracle (gold item name) | 100% | 100% |
-| raw user question, no model | **84.4%** | 93.8% |
-| base Qwen3-1.7B rewrites it | 75.0% | 84.4% |
-| old ID-emitting adapter rewrites it | 62.5% | 71.9% |
-| current item-name adapter rewrites it | 84.4% | 90.6% |
-
-The retriever has no ceiling problem — given a good query it is perfect. But **no
-model in the chain beats simply passing the user's question through.** The
-current adapter ties on recall@1 and is *worse* on recall@5.
-
-The reason is format lock-in, and it survived the switch to item names. Asked for
-a search phrase, the adapter emits tool calls, because tool calls are all it has
-ever been trained to produce:
-
-    "Show me hospital services CPI since 2021."  ->  get_hospital_services_cpi(2021)
-    "What did housing costs do..."               ->  get_housing_cost(2019, 2024)
-    "...details of the food index?"              ->  catfood()
-
-It scores 84.4% only because BM25 tokenises `get_housing_cost` into
-`get`/`housing`/`cost` and the content words survive. That is the retriever being
-robust to noise, not the model writing queries — `catfood()` is the counterexample
-that tokenises to nothing useful.
-
-So retrieval still cannot be bolted on by prompting. It needs training on traces
-that contain the search step.
-
-Next steps, in order:
-
-1. **Enumerate the catalogue in context.** All 400 item names fit in ~2,274
-   tokens. That removes recall entirely — the model selects from a visible list
-   rather than remembering. Needs `max_seq_length` raised from 2048.
-2. **A general alias table** for user vocabulary → catalogue vocabulary, built
-   from domain knowledge rather than from test failures, and validated on val.
-3. **BM25 / retrieval** only if the catalogue outgrows context. It is the answer
-   to "the list does not fit", which is not currently the problem — and it
-   *requires* the query-formulation step measured above as harmful.
-
-Judge anything new against **both** 84.4% (no model at all) and 94.4% (current).
-
-### Not supported: multi-step calls (deliberate)
-
-The model emits exactly one tool call per turn. This is a decision, not an
-oversight: an MCP host already runs the call → result → call loop, so the useful
-contract is "pick the right single call given the conversation so far".
-
-An earlier version had six compound seeds ("search for rent series, **then** get
-data for the first result"). They were removed because they were mislabeled by
-construction — the training target hardcoded `series_id="CUUR0000SEHA01"` as the
-"first result", which the model cannot know without seeing the search output. It
-taught guessing a plausible ID rather than reading one. (They were also inert:
-the formatter only ever emitted the first call, so the second was silently
-discarded.)
-
-Adding real multi-step means one of two things:
-
-- **Independent calls only** — compound questions whose calls are all knowable
-  upfront ("CPI and unemployment for 2024"). Needs an output format for N calls
-  and a set-comparison metric in `score.py`. Tractable.
-- **Dependent steps** — requires actual tool results in the training context,
-  which means capturing live BLS responses and a strategy for truncating large
-  `get_series` payloads. A separate project.
-
-### Files
-
-| file | role |
-|---|---|
-| `seed_dataset.py` | concept tables → `SEED_DATA` (205 seeds / 82 concepts) |
-| `build_dataset.py` | split, expand, validate; writes `*_clean.jsonl` + `mlx_data_clean/` |
-| `train.py` | wrapper over `mlx_lm.lora` + val-accuracy checkpoint selection |
-| `score.py` | tool/entity/exact metrics; `--split {test,val}` |
-| `models/bls-agent-v10/` | the adapter (`adapter_config.json` records which checkpoint and why) |
-
-`models/` holds only the current adapter. Superseded ones are deleted rather than
-kept — everything is reproducible from the committed pipeline, and the older
-adapters were trained on data with known-wrong labels. Intermediate LoRA
-checkpoints are gitignored; `train.py` selects one and promotes it to
-`adapters.safetensors`.
-
-`train.py` refuses to run if `mlx_data_clean/` is older than `seed_dataset.py` or
-`build_dataset.py` — training on stale data otherwise fails silently.
-
-Only the MLX/Apple-Silicon path is supported. A previous Unsloth/CUDA path was
-removed rather than left untested. GGUF export needs a fused model (`mlx_lm.fuse`)
-and is not wired up.
-
-## Structure
+## Layout
 
 ```
 bls_data/
 ├── src/bls_data/
-│   ├── client.py    # BLS API v2 client — chunking, retries, key rotation
-│   ├── parser.py    # JSON → pandas DataFrame
-│   ├── mapping.py   # Human-readable aliases → series IDs
-│   ├── cpi.py       # CPI series code helpers
-│   ├── api_key.py   # Random key rotation from .env
-│   └── server.py    # FastMCP server
-├── tests/
-├── cu_series/       # CPI master list (CSV)
-├── scripts/         # CPI extraction utilities
-├── seed_dataset.py  # distillation: concept tables
-├── build_dataset.py # distillation: splits + validation
-├── train.py         # distillation: MLX LoRA + checkpoint selection
-├── score.py         # distillation: held-out evaluation
-├── models/          # LoRA adapters
-└── pyproject.toml
+│   ├── client.py     # BLS API v2 — chunking, retries, key rotation
+│   ├── parser.py     # JSON → pandas DataFrame
+│   ├── items.py      # item name → series ID; aliases, BM25 search
+│   ├── mapping.py    # human-readable aliases → series IDs
+│   ├── cpi.py        # CPI series code helpers
+│   ├── api_key.py    # random key rotation from .env
+│   └── server.py     # FastMCP server, 6 tools
+├── seed_dataset.py   # concept tables → seeds
+├── build_dataset.py  # splits, validation, mlx_data_clean/
+├── train.py          # MLX LoRA + checkpoint selection
+├── score.py          # held-out evaluation
+├── experiments_retrieval.py  # retrieval feasibility study (not in serving path)
+├── models/           # current adapter only; superseded ones are deleted
+├── cu_series/        # CPI master list (CSV)
+├── scripts/          # CPI extraction utilities
+└── tests/
 ```
 
 ## License

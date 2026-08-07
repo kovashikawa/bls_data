@@ -198,7 +198,7 @@ def report(r):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--adapter", default="models/bls-agent-v3")
+    p.add_argument("--adapter", default="models/bls-agent-v10")
     p.add_argument("--compare", help="second adapter to score alongside")
     p.add_argument("--base-only", action="store_true")
     p.add_argument("--no-base", action="store_true",
